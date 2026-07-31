@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "885029793401",
+    "project_id": "tecnigo-6c76c",
+    "storage_bucket": "tecnigo-6c76c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:885029793401:android:ab838b431154d23c1f6ea8",
+        "android_client_info": {
+          "package_name": "com.example.tecnigo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNHhvzpZJgCkFqbf91COCLeBFzY3s_djI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
