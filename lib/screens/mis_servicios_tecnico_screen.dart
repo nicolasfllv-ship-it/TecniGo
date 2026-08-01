@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'tecnico_mapa_screen.dart';
@@ -44,6 +45,62 @@ class _MisServiciosTecnicoScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al actualizar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actualizando.remove(servicioId));
+    }
+  }
+
+  Future<void> _confirmarLiberar(String servicioId) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Liberar este servicio?'),
+        content: const Text(
+          'El servicio volverá a quedar disponible para que otro '
+          'técnico lo pueda aceptar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Sí, liberar',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() => _actualizando.add(servicioId));
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('servicios')
+          .doc(servicioId)
+          .update({
+        'estado': 'pendiente',
+        'tecnicoId': FieldValue.delete(),
+        'tecnicoEmail': FieldValue.delete(),
+        'fechaAceptacion': FieldValue.delete(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Servicio liberado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al liberar: $e')),
         );
       }
     } finally {
@@ -162,6 +219,7 @@ class _MisServiciosTecnicoScreenState
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => TecnicoMapaScreen(
+                                    servicioId: servicio.id,
                                     tecnicoId: tecnico.uid,
                                     clienteLat:
                                         (servicio['lat'] as num).toDouble(),
@@ -186,7 +244,7 @@ class _MisServiciosTecnicoScreenState
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
+                                        strokeWidth: 2, color: AppColors.background),
                                   )
                                 : const Icon(Icons.directions_car),
                             label: const Text('En camino'),
@@ -208,7 +266,7 @@ class _MisServiciosTecnicoScreenState
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
+                                        strokeWidth: 2, color: AppColors.background),
                                   )
                                 : const Icon(Icons.handyman),
                             label: const Text('Iniciar trabajo'),
@@ -230,7 +288,7 @@ class _MisServiciosTecnicoScreenState
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
+                                        strokeWidth: 2, color: AppColors.background),
                                   )
                                 : const Icon(Icons.check_circle),
                             label: const Text('Finalizar servicio'),
@@ -245,6 +303,24 @@ class _MisServiciosTecnicoScreenState
                                     ),
                           ),
                         ),
+
+                      if (estado == 'aceptado' || estado == 'en camino') ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            icon: const Icon(Icons.close),
+                            label: const Text('Liberar servicio'),
+                            onPressed: actualizandoEste
+                                ? null
+                                : () => _confirmarLiberar(servicio.id),
+                          ),
+                        ),
+                      ],
 
                       if (estado == 'finalizado')
                         Container(

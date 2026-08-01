@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Fondo principal
-  static const Color background = Color(0xFF18181B);
+  // Fondo principal: gris carbón muy oscuro, casi neutro.
+  static const Color background = Color(0xFF121418);
 
-  // Tarjetas
-  static const Color surface = Color(0xFF27272A);
+  // Tarjetas: gris pizarra neutro, con más contraste frente al fondo.
+  static const Color surface = Color(0xFF1E222A);
 
-  // Color principal
-  static const Color primary = Color(0xFF3B82F6);
+  // Color principal: plateado/blanco, aire de metal pulido.
+  static const Color primary = Color(0xFFE5E9F0);
+
+  // Color de alerta / estado pendiente.
+  static const Color accent = Color(0xFFF5A623);
 
   // Texto
-  static const Color text = Colors.white;
+  static const Color text = Color(0xFFF1F5F9);
 
   // Texto secundario
-  static const Color subtitle = Color(0xFFA1A1AA);
+  static const Color subtitle = Color(0xFF9AA3AF);
 
   // Estados
-  static const Color success = Color(0xFF22C55E);
-  static const Color error = Color(0xFFEF4444);
+  static const Color success = Color(0xFF34D399);
+  static const Color error = Color(0xFFF87171);
 
   // Bordes
-  static const Color border = Color(0xFF3F3F46);
+  static const Color border = Color(0xFF2E333C);
 }

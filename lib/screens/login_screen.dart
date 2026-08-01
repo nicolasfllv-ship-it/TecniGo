@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -152,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Icon(
                   Icons.build_circle,
                   size: 100,
-                  color: Colors.blue,
+                  color: AppColors.primary,
                 ),
 
                 const SizedBox(height: 20),
@@ -199,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                              color: Colors.white,
+                              color: AppColors.background,
                               strokeWidth: 2.5,
                             ),
                           )

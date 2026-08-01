@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
@@ -357,6 +358,7 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => TecnicoMapaScreen(
+                                      servicioId: servicio.id,
                                       tecnicoId: FirebaseAuth
                                           .instance.currentUser!.uid,
                                       clienteLat:
@@ -389,7 +391,7 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
                                       height: 18,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Colors.white,
+                                        color: AppColors.background,
                                       ),
                                     )
                                   : const Icon(Icons.check),

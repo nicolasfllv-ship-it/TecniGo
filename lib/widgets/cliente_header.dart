@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 
 class ClienteHeader extends StatelessWidget {
   const ClienteHeader({super.key});
@@ -29,7 +30,7 @@ class ClienteHeader extends StatelessWidget {
           "${obtenerSaludo()} 👋",
           style: const TextStyle(
             fontSize: 18,
-            color: Colors.grey,
+            color: AppColors.subtitle,
           ),
         ),
 
@@ -66,7 +67,7 @@ class ClienteHeader extends StatelessWidget {
           "¿Qué necesitas hoy?",
           style: TextStyle(
             fontSize: 18,
-            color: Colors.black54,
+            color: AppColors.subtitle,
           ),
         ),
       ],

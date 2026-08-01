@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 
 class DashboardHeader extends StatelessWidget {
   const DashboardHeader({super.key});
@@ -9,8 +10,9 @@ class DashboardHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        color: Colors.blue,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -18,7 +20,7 @@ class DashboardHeader extends StatelessWidget {
           Text(
             "👋 Bienvenido a TecniGo",
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.text,
               fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
@@ -27,22 +29,11 @@ class DashboardHeader extends StatelessWidget {
           SizedBox(height: 10),
 
           Text(
-            "Administra clientes, técnicos y servicios desde un solo lugar.",
+            "🚧 En construcción",
             style: TextStyle(
-              color: Colors.white70,
+              color: AppColors.accent,
               fontSize: 16,
-            ),
-          ),
-
-          SizedBox(height: 10),
-
-          Text(
-            "(Panel en construcción — algunas funciones aún se están "
-            "desarrollando)",
-            style: TextStyle(
-              color: Colors.white60,
-              fontSize: 13,
-              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

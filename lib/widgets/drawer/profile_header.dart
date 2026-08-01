@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tecnigo/theme/app_colors.dart';
+import 'package:tecnigo/widgets/scanner_frame.dart';
 
 class ProfileHeader extends StatelessWidget {
   final String rolLabel;
@@ -15,7 +17,7 @@ class ProfileHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 40, 20, 30),
       decoration: const BoxDecoration(
-        color: Color(0xFF27272A),
+        color: AppColors.surface,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(25),
           bottomRight: Radius.circular(25),
@@ -24,13 +26,17 @@ class ProfileHeader extends StatelessWidget {
       child: Column(
         children: [
 
-          const CircleAvatar(
-            radius: 42,
-            backgroundColor: Colors.white,
-            child: Icon(
-              Icons.person,
-              size: 45,
-              color: Color(0xFF27272A),
+          ScannerFrame(
+            tamano: 14,
+            grosor: 2,
+            child: const CircleAvatar(
+              radius: 42,
+              backgroundColor: AppColors.primary,
+              child: Icon(
+                Icons.person,
+                size: 45,
+                color: AppColors.background,
+              ),
             ),
           ),
 
@@ -56,7 +62,7 @@ class ProfileHeader extends StatelessWidget {
               return Text(
                 nombre,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.text,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
@@ -72,13 +78,14 @@ class ProfileHeader extends StatelessWidget {
               vertical: 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white12,
+              color: AppColors.background,
               borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               rolLabel,
               style: const TextStyle(
-                color: Colors.white,
+                color: AppColors.primary,
                 fontWeight: FontWeight.w500,
               ),
             ),

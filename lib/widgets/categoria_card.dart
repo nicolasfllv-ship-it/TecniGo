@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 
 class CategoriaCard extends StatelessWidget {
   final String titulo;
@@ -21,9 +22,20 @@ class CategoriaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 4,
+      elevation: 0,
       margin: const EdgeInsets.only(bottom: 15),
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: seleccionado ? AppColors.primary : AppColors.border,
+          width: seleccionado ? 1.5 : 1,
+        ),
+      ),
       child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         leading: Icon(
           icono,
           color: color,
@@ -34,13 +46,17 @@ class CategoriaCard extends StatelessWidget {
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 18,
+            color: AppColors.text,
           ),
         ),
-        subtitle: Text(subtitulo),
+        subtitle: Text(
+          subtitulo,
+          style: const TextStyle(color: AppColors.subtitle),
+        ),
         trailing: seleccionado
             ? const Icon(
                 Icons.check_circle,
-                color: Colors.green,
+                color: AppColors.primary,
               )
             : null,
         onTap: onTap,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CalificarTecnicoScreen extends StatefulWidget {
@@ -150,7 +151,7 @@ class _CalificarTecnicoScreenState extends State<CalificarTecnicoScreen> {
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
-                            color: Colors.white,
+                            color: AppColors.background,
                             strokeWidth: 2.5,
                           ),
                         )

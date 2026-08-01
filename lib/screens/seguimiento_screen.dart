@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../services/eta_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/servicio_duraciones.dart';
+import '../widgets/scanner_frame.dart';
 
 /// Pantalla que ve el CLIENTE: estilo tipo Yango/Uber — mapa grande
 /// arriba y un panel abajo con toda la info del servicio y el técnico.
@@ -35,6 +36,7 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
   RutaInfo? _ruta;
   LatLng? _tecnicoPos;
   Timer? _debounceEta;
+  bool _cancelando = false;
 
   late final LatLng _clientePos;
 
@@ -74,6 +76,58 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
         return 'Servicio finalizado';
       default:
         return 'Buscando técnico...';
+    }
+  }
+
+  Future<void> _confirmarCancelar() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Cancelar este servicio?'),
+        content: const Text(
+          'Esta acción no se puede deshacer. El servicio quedará '
+          'cancelado.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No, mantenerlo'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Sí, cancelar',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() => _cancelando = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('servicios')
+          .doc(widget.servicioId)
+          .update({'estado': 'cancelado'});
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Servicio cancelado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cancelar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _cancelando = false);
     }
   }
 
@@ -167,12 +221,18 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                                 markers: [
                                   Marker(
                                     point: tecnicoPos,
-                                    width: 44,
-                                    height: 44,
-                                    child: const Icon(
-                                      Icons.engineering,
-                                      color: Colors.orange,
-                                      size: 36,
+                                    width: 54,
+                                    height: 54,
+                                    child: const ScannerFrame(
+                                      tamano: 16,
+                                      grosor: 2,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.engineering,
+                                          color: Colors.orange,
+                                          size: 30,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   Marker(
@@ -342,6 +402,35 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                                 ],
                               ),
                             ),
+
+                            if (estado == 'pendiente' ||
+                                estado == 'aceptado' ||
+                                estado == 'en camino') ...[
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    side: const BorderSide(color: Colors.red),
+                                  ),
+                                  icon: _cancelando
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.red,
+                                          ),
+                                        )
+                                      : const Icon(Icons.close),
+                                  label: const Text('Cancelar servicio'),
+                                  onPressed: _cancelando
+                                      ? null
+                                      : _confirmarCancelar,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

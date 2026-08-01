@@ -12,6 +12,7 @@ import '../theme/app_colors.dart';
 /// distancia y tiempo estimado. También deja abrir Google Maps por
 /// fuera, por si el técnico prefiere navegación real paso a paso.
 class TecnicoMapaScreen extends StatefulWidget {
+  final String servicioId;
   final String tecnicoId;
   final double clienteLat;
   final double clienteLng;
@@ -19,6 +20,7 @@ class TecnicoMapaScreen extends StatefulWidget {
 
   const TecnicoMapaScreen({
     super.key,
+    required this.servicioId,
     required this.tecnicoId,
     required this.clienteLat,
     required this.clienteLng,
@@ -35,6 +37,7 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
   RutaInfo? _ruta;
   LatLng? _miPosAnterior;
   Timer? _debounceEta;
+  bool _liberando = false;
 
   late final LatLng _clientePos;
 
@@ -68,6 +71,63 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
       '${widget.clienteLat},${widget.clienteLng}',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _confirmarLiberar() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Liberar este servicio?'),
+        content: const Text(
+          'El servicio volverá a quedar disponible para que otro '
+          'técnico lo pueda aceptar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Sí, liberar',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() => _liberando = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('servicios')
+          .doc(widget.servicioId)
+          .update({
+        'estado': 'pendiente',
+        'tecnicoId': FieldValue.delete(),
+        'tecnicoEmail': FieldValue.delete(),
+        'fechaAceptacion': FieldValue.delete(),
+      });
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Servicio liberado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al liberar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _liberando = false);
+    }
   }
 
   @override
@@ -174,23 +234,51 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
                     topRight: Radius.circular(20),
                   ),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.directions_car,
-                        color: AppColors.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _ruta == null
-                            ? 'Calculando ruta...'
-                            : '${_ruta!.minutosEstimados} min '
-                                '(${_ruta!.distanciaKm.toStringAsFixed(1)} km) '
-                                'hasta el cliente',
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        const Icon(Icons.directions_car,
+                            color: AppColors.primary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _ruta == null
+                                ? 'Calculando ruta...'
+                                : '${_ruta!.minutosEstimados} min '
+                                    '(${_ruta!.distanciaKm.toStringAsFixed(1)} km) '
+                                    'hasta el cliente',
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                        ),
+                        icon: _liberando
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.red,
+                                ),
+                              )
+                            : const Icon(Icons.close),
+                        label: const Text('Liberar servicio'),
+                        onPressed: _liberando ? null : _confirmarLiberar,
                       ),
                     ),
                   ],
