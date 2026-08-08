@@ -291,37 +291,50 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                             const SizedBox(height: 18),
 
                             // Estado grande, arriba de todo (lo primero
-                            // que se lee, como en Yango).
-                            Row(
-                              children: [
-                                Icon(
-                                  yaLlego
-                                      ? Icons.check_circle
-                                      : Icons.directions_car,
-                                  color: yaLlego
-                                      ? AppColors.success
-                                      : AppColors.primary,
-                                  size: 28,
+                            // que se lee, como en Yango). Con transición
+                            // suave cuando cambia (ej. al llegar).
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 400),
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: animation,
+                                  child: child,
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
+                              ),
+                              child: Row(
+                                key: ValueKey(yaLlego),
+                                children: [
+                                  Icon(
                                     yaLlego
-                                        ? '¡Tu técnico ya llegó!'
-                                        : _ruta == null
-                                            ? 'Calculando llegada...'
-                                            : '${_ruta!.minutosEstimados} min · '
-                                                '${_ruta!.distanciaKm.toStringAsFixed(1)} km',
-                                    style: TextStyle(
-                                      color: yaLlego
-                                          ? AppColors.success
-                                          : AppColors.text,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                        ? Icons.check_circle
+                                        : Icons.directions_car,
+                                    color: yaLlego
+                                        ? AppColors.success
+                                        : AppColors.primary,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      yaLlego
+                                          ? '¡Tu técnico ya llegó!'
+                                          : _ruta == null
+                                              ? 'Calculando llegada...'
+                                              : '${_ruta!.minutosEstimados} min · '
+                                                  '${_ruta!.distanciaKm.toStringAsFixed(1)} km',
+                                      style: TextStyle(
+                                        color: yaLlego
+                                            ? AppColors.success
+                                            : AppColors.text,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
 
                             const SizedBox(height: 6),

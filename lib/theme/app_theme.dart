@@ -58,5 +58,18 @@ class AppTheme {
       backgroundColor: AppColors.surface,
       indicatorColor: AppColors.primary.withOpacity(.2),
     ),
+
+    // Transición suave (deslizar) entre pantallas, igual en todas
+    // las plataformas, en vez del efecto por defecto de Android
+    // (que se siente más brusco).
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
+    ),
   );
 }
