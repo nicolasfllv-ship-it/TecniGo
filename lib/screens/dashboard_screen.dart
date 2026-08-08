@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tecnigo/widgets/dashboard_widgets.dart';
 import 'package:tecnigo/widgets/dashboard_header.dart';
+import 'package:tecnigo/theme/app_colors.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -70,19 +71,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     titulo: "Clientes",
                     valor: totalClientes.toString(),
                     icono: Icons.people,
-                    color: Colors.blue,
+                    color: AppColors.primary,
                   ),
                   DashboardCard(
                     titulo: "Técnicos",
                     valor: totalTecnicos.toString(),
                     icono: Icons.engineering,
-                    color: Colors.green,
+                    color: AppColors.accent,
                   ),
                   DashboardCard(
                     titulo: "Servicios",
                     valor: totalServicios.toString(),
                     icono: Icons.build,
-                    color: Colors.orange,
+                    color: AppColors.success,
                   ),
                 ],
               ),
