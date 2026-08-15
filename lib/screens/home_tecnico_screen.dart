@@ -179,16 +179,41 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
     );
   }
 
+  // Íconos según el tipo de servicio, para que la lista se lea de un
+  // vistazo en vez de tener que leer el texto completo cada vez.
+  IconData _iconoServicio(String? tipo) {
+    final t = (tipo ?? '').toLowerCase();
+    if (t.contains('cámara') || t.contains('camara')) return Icons.videocam;
+    if (t.contains('domótica') || t.contains('domotica')) return Icons.home_max;
+    if (t.contains('acceso')) return Icons.fingerprint;
+    if (t.contains('puerta') || t.contains('portón') || t.contains('porton')) {
+      return Icons.garage;
+    }
+    if (t.contains('cerca')) return Icons.bolt;
+    if (t.contains('cerraj')) return Icons.vpn_key;
+    return Icons.build;
+  }
+
+  String _tiempoRelativo(dynamic fecha) {
+    if (fecha is! Timestamp) return '';
+    final diff = DateTime.now().difference(fecha.toDate());
+    if (diff.inMinutes < 1) return 'Justo ahora';
+    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'Hace ${diff.inHours} h';
+    return 'Hace ${diff.inDays} d';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-       drawer: const TecnicoDrawer(),
-       appBar: AppBar(
-  title: const Text('TecniGo Técnico'),
-),
-
+      backgroundColor: AppColors.background,
+      drawer: const TecnicoDrawer(),
+      appBar: AppBar(
+        title: const Text('TecniGo Técnico'),
+      ),
       body: Column(
         children: [
+          const _SaludoTecnico(),
           const TecnicoDisponibilidad(),
           const ServiciosActualesTecnico(),
           Expanded(
@@ -206,215 +231,481 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
                 }
 
                 if (!disponible) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(30),
-                      child: Text(
-                        'Activa tu disponibilidad para ver los '
-                        'servicios cercanos.',
-                        textAlign: TextAlign.center,
+                      padding: const EdgeInsets.all(30),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.pause_circle_outline,
+                              color: AppColors.subtitle, size: 48),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Activa tu disponibilidad para ver los '
+                            'servicios cercanos.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.subtitle),
+                          ),
+                        ],
                       ),
                     ),
                   );
                 }
 
-                return Column(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(15, 20, 15, 5),
-                      child: Row(
-                        children: [
-                          Text(
-                            "Servicios cercanos",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('servicios')
-                            .where('estado', isEqualTo: 'pendiente')
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text('Error: ${snapshot.error}'),
-                            );
-                          }
-
-                          if (!snapshot.hasData) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-
-          final todosLosServicios = snapshot.data!.docs;
-
-          if (todosLosServicios.isEmpty) {
-            return const Center(
-              child: Text('No hay servicios pendientes'),
-            );
-          }
-
-          // Si todavía no sabemos dónde está el técnico, no podemos
-          // calcular distancias todavía.
-          if (_miPosicion == null) {
-            return const Center(
-              child: Text('Obteniendo tu ubicación para mostrarte\n'
-                  'los servicios más cercanos...',
-                  textAlign: TextAlign.center),
-            );
-          }
-
-          const Distance distanciaCalc = Distance();
-
-          // Calculamos qué tan lejos está cada solicitud del técnico,
-          // y nos quedamos solo con las que están dentro del radio
-          // permitido (así un técnico en Bosa no ve ni puede aceptar
-          // un servicio en Suba).
-          final serviciosConDistancia = todosLosServicios
-              .map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final posServicio = LatLng(
-                  (data['lat'] as num).toDouble(),
-                  (data['lng'] as num).toDouble(),
-                );
-                final km =
-                    distanciaCalc(_miPosicion!, posServicio) / 1000;
-                return (doc: doc, km: km);
-              })
-              .where((item) => item.km <= _radioMaximoKm)
-              .toList()
-            ..sort((a, b) => a.km.compareTo(b.km));
-
-          if (serviciosConDistancia.isEmpty) {
-            return const Center(
-              child: Text(
-                'No hay servicios cerca de ti en este momento',
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
-
-          final servicios =
-              serviciosConDistancia.map((item) => item.doc).toList();
-
-          return ListView.builder(
-            itemCount: servicios.length,
-            itemBuilder: (context, index) {
-              final servicio = servicios[index];
-              final distanciaKm = serviciosConDistancia[index].km;
-
-              return Card(
-                margin: const EdgeInsets.all(12),
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        servicio['tipoServicio'],
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('servicios')
+                      .where('estado', isEqualTo: 'pendiente')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Error: ${snapshot.error}',
+                          style: const TextStyle(color: AppColors.error),
                         ),
-                      ),
+                      );
+                    }
 
-                      const SizedBox(height: 10),
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.primary),
+                      );
+                    }
 
-                      Text(
-                        servicio['descripcion'],
-                        style: const TextStyle(fontSize: 16),
-                      ),
+                    final todosLosServicios = snapshot.data!.docs;
 
-                      const SizedBox(height: 15),
+                    if (todosLosServicios.isEmpty) {
+                      return _EstadoVacio(
+                        icono: Icons.inbox_outlined,
+                        texto: 'No hay servicios pendientes por ahora.',
+                      );
+                    }
 
-                      Text(
-                        'Cliente: ${servicio['emailCliente']}',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
+                    // Si todavía no sabemos dónde está el técnico, no
+                    // podemos calcular distancias todavía.
+                    if (_miPosicion == null) {
+                      return _EstadoVacio(
+                        icono: Icons.my_location,
+                        texto: 'Obteniendo tu ubicación para mostrarte\n'
+                            'los servicios más cercanos...',
+                      );
+                    }
 
-                      const SizedBox(height: 8),
+                    const Distance distanciaCalc = Distance();
 
-                      Text(
-                        '📍 A ${distanciaKm.toStringAsFixed(1)} km de ti',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
+                    // Calculamos qué tan lejos está cada solicitud del
+                    // técnico, y nos quedamos solo con las que están
+                    // dentro del radio permitido.
+                    final serviciosConDistancia = todosLosServicios
+                        .map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final posServicio = LatLng(
+                            (data['lat'] as num).toDouble(),
+                            (data['lng'] as num).toDouble(),
+                          );
+                          final km =
+                              distanciaCalc(_miPosicion!, posServicio) / 1000;
+                          return (doc: doc, km: km);
+                        })
+                        .where((item) => item.km <= _radioMaximoKm)
+                        .toList()
+                      ..sort((a, b) => a.km.compareTo(b.km));
 
-                      const SizedBox(height: 20),
+                    if (serviciosConDistancia.isEmpty) {
+                      return _EstadoVacio(
+                        icono: Icons.location_searching,
+                        texto:
+                            'No hay servicios cerca de ti en este momento.',
+                      );
+                    }
 
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => TecnicoMapaScreen(
-                                      servicioId: servicio.id,
-                                      tecnicoId: FirebaseAuth
-                                          .instance.currentUser!.uid,
-                                      clienteLat:
-                                          (servicio['lat'] as num)
-                                              .toDouble(),
-                                      clienteLng:
-                                          (servicio['lng'] as num)
-                                              .toDouble(),
-                                      tipoServicio:
-                                          servicio['tipoServicio'],
-                                    ),
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Servicios cercanos',
+                                style: TextStyle(
+                                  color: AppColors.text,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '${serviciosConDistancia.length}',
+                                  style: const TextStyle(
+                                    color: AppColors.accent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
                                   ),
-                                );
-                              },
-                              icon: const Icon(Icons.map),
-                              label: const Text('Ver ruta'),
-                            ),
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            itemCount: serviciosConDistancia.length,
+                            itemBuilder: (context, index) {
+                              final servicio =
+                                  serviciosConDistancia[index].doc;
+                              final distanciaKm =
+                                  serviciosConDistancia[index].km;
+                              final data =
+                                  servicio.data() as Map<String, dynamic>;
 
-                          const SizedBox(width: 10),
-
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _aceptando.contains(servicio.id)
-                                  ? null
-                                  : () => _aceptarServicio(servicio.id),
-                              icon: _aceptando.contains(servicio.id)
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.background,
+                              return _TarjetaServicio(
+                                icono: _iconoServicio(data['tipoServicio']),
+                                tipoServicio: data['tipoServicio'] ?? '',
+                                descripcion: data['descripcion'] ?? '',
+                                emailCliente: data['emailCliente'] ?? '',
+                                distanciaKm: distanciaKm,
+                                tiempoRelativo:
+                                    _tiempoRelativo(data['fecha']),
+                                cargando: _aceptando.contains(servicio.id),
+                                onVerRuta: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => TecnicoMapaScreen(
+                                        servicioId: servicio.id,
+                                        tecnicoId: FirebaseAuth
+                                            .instance.currentUser!.uid,
+                                        clienteLat:
+                                            (data['lat'] as num).toDouble(),
+                                        clienteLng:
+                                            (data['lng'] as num).toDouble(),
+                                        tipoServicio: data['tipoServicio'],
                                       ),
-                                    )
-                                  : const Icon(Icons.check),
-                              label: const Text('Aceptar'),
-                            ),
+                                    ),
+                                  );
+                                },
+                                onAceptar: () =>
+                                    _aceptarServicio(servicio.id),
+                              );
+                            },
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-                    ),
-                  ),
-                ],
-              );
+                        ),
+                      ],
+                    );
+                  },
+                );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SaludoTecnico extends StatelessWidget {
+  const _SaludoTecnico();
+
+  String _saludoSegunHora() {
+    final hora = DateTime.now().hour;
+    if (hora < 12) return 'Buenos días';
+    if (hora < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String nombre = 'Técnico';
+        bool disponible = true;
+
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          if ((data['nombre'] ?? '').toString().isNotEmpty) {
+            nombre = data['nombre'];
+          }
+          disponible = data['disponible'] ?? true;
+        }
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(14, 14, 14, 4),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: AppColors.primary.withOpacity(0.12),
+                child: const Icon(Icons.engineering, color: AppColors.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_saludoSegunHora()}, $nombre',
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      disponible
+                          ? 'Estás recibiendo servicios cercanos'
+                          : 'No estás recibiendo servicios ahora',
+                      style: const TextStyle(
+                        color: AppColors.subtitle,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: (disponible ? AppColors.success : AppColors.subtitle)
+                      .withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: disponible
+                            ? AppColors.success
+                            : AppColors.subtitle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      disponible ? 'En línea' : 'Pausado',
+                      style: TextStyle(
+                        color: disponible
+                            ? AppColors.success
+                            : AppColors.subtitle,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EstadoVacio extends StatelessWidget {
+  final IconData icono;
+  final String texto;
+
+  const _EstadoVacio({required this.icono, required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, color: AppColors.subtitle, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.subtitle),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TarjetaServicio extends StatelessWidget {
+  final IconData icono;
+  final String tipoServicio;
+  final String descripcion;
+  final String emailCliente;
+  final double distanciaKm;
+  final String tiempoRelativo;
+  final bool cargando;
+  final VoidCallback onVerRuta;
+  final VoidCallback onAceptar;
+
+  const _TarjetaServicio({
+    required this.icono,
+    required this.tipoServicio,
+    required this.descripcion,
+    required this.emailCliente,
+    required this.distanciaKm,
+    required this.tiempoRelativo,
+    required this.cargando,
+    required this.onVerRuta,
+    required this.onAceptar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.primary.withOpacity(0.12),
+                  child: Icon(icono, color: AppColors.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tipoServicio,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (tiempoRelativo.isNotEmpty)
+                        Text(
+                          tiempoRelativo,
+                          style: const TextStyle(
+                            color: AppColors.subtitle,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${distanciaKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (descripcion.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                descripcion,
+                style: const TextStyle(color: AppColors.subtitle, fontSize: 14),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.person_outline,
+                    color: AppColors.subtitle, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    emailCliente,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppColors.subtitle, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: onVerRuta,
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const Text('Ver ruta'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: cargando ? null : onAceptar,
+                    icon: cargando
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.background,
+                            ),
+                          )
+                        : const Icon(Icons.check, size: 18),
+                    label: const Text('Aceptar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/eta_service.dart';
 import '../theme/app_colors.dart';
+import 'chat_screen.dart';
 
 /// Pantalla que ve el TÉCNICO: muestra en un mapa, dentro de la misma
 /// app, la ruta desde su ubicación actual hasta la del cliente, con
@@ -38,6 +39,7 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
   LatLng? _miPosAnterior;
   Timer? _debounceEta;
   bool _liberando = false;
+  bool _abriendoChat = false;
 
   late final LatLng _clientePos;
 
@@ -71,6 +73,65 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
       '${widget.clienteLat},${widget.clienteLng}',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _abrirChat() async {
+    setState(() => _abriendoChat = true);
+    try {
+      final servicioDoc = await FirebaseFirestore.instance
+          .collection('servicios')
+          .doc(widget.servicioId)
+          .get();
+
+      final data = servicioDoc.data();
+      final clienteId = data?['clienteId'] as String?;
+
+      if (clienteId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('No se encontró el cliente de este servicio')),
+          );
+        }
+        return;
+      }
+
+      String nombreCliente = (data?['emailCliente'] ?? 'Cliente').toString();
+
+      final clienteDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(clienteId)
+          .get();
+
+      if (clienteDoc.exists) {
+        final clienteData = clienteDoc.data() as Map<String, dynamic>;
+        if ((clienteData['nombre'] ?? '').toString().isNotEmpty) {
+          nombreCliente = clienteData['nombre'];
+        }
+      }
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            servicioId: widget.servicioId,
+            miUid: widget.tecnicoId,
+            miRol: 'tecnico',
+            nombreOtro: nombreCliente,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo abrir el chat: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _abriendoChat = false);
+    }
   }
 
   Future<void> _confirmarLiberar() async {
@@ -136,6 +197,17 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
       appBar: AppBar(
         title: const Text('Ruta al cliente'),
         actions: [
+          IconButton(
+            icon: _abriendoChat
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Chat con el cliente',
+            onPressed: _abriendoChat ? null : _abrirChat,
+          ),
           IconButton(
             icon: const Icon(Icons.open_in_new),
             tooltip: 'Abrir en Google Maps',

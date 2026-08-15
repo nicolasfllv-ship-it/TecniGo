@@ -61,15 +61,30 @@ class ServicioActualCard extends StatelessWidget {
                   final data = doc.data() as Map<String, dynamic>;
                   final estado = data['estado'];
                   final tipoServicio = data['tipoServicio'] ?? '';
-                  final activo = estado == 'aceptado' ||
-                      estado == 'en camino' ||
-                      estado == 'trabajando';
+
+                  // El campo tecnicoId, la lat y la lng del cliente son
+                  // obligatorios para poder abrir el mapa de seguimiento.
+                  // Si algún servicio de prueba quedó sin alguno de estos
+                  // datos, lo tratamos como "no navegable" en vez de
+                  // reventar la app.
+                  final tecnicoId = data['tecnicoId'] as String?;
+                  final lat = data['lat'];
+                  final lng = data['lng'];
+                  final datosCompletos =
+                      tecnicoId != null && lat != null && lng != null;
+
+                  final activo = datosCompletos &&
+                      (estado == 'aceptado' ||
+                          estado == 'en camino' ||
+                          estado == 'trabajando');
 
                   final textoEstado = estado == 'pendiente'
                       ? "Buscando técnico..."
-                      : estado == 'trabajando'
-                          ? "Técnico trabajando"
-                          : "Técnico en camino";
+                      : !datosCompletos
+                          ? "Faltan datos de este servicio"
+                          : estado == 'trabajando'
+                              ? "Técnico trabajando"
+                              : "Técnico en camino";
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -86,11 +101,9 @@ class ServicioActualCard extends StatelessWidget {
                                   MaterialPageRoute(
                                     builder: (_) => SeguimientoScreen(
                                       servicioId: doc.id,
-                                      tecnicoId: data['tecnicoId'],
-                                      clienteLat:
-                                          (data['lat'] as num).toDouble(),
-                                      clienteLng:
-                                          (data['lng'] as num).toDouble(),
+                                      tecnicoId: tecnicoId!,
+                                      clienteLat: (lat as num).toDouble(),
+                                      clienteLng: (lng as num).toDouble(),
                                       tipoServicio: tipoServicio,
                                     ),
                                   ),

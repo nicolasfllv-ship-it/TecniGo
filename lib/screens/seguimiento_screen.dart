@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/eta_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/servicio_duraciones.dart';
 import '../widgets/scanner_frame.dart';
+import 'chat_screen.dart';
 
 /// Pantalla que ve el CLIENTE: estilo tipo Yango/Uber — mapa grande
 /// arriba y un panel abajo con toda la info del servicio y el técnico.
@@ -77,6 +79,23 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
       default:
         return 'Buscando técnico...';
     }
+  }
+
+  void _abrirChat(String nombreTecnico) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          servicioId: widget.servicioId,
+          miUid: uid,
+          miRol: 'cliente',
+          nombreOtro: nombreTecnico,
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmarCancelar() async {
@@ -351,7 +370,7 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                             const Divider(color: AppColors.border),
                             const SizedBox(height: 14),
 
-                            // Datos del técnico.
+                            // Datos del técnico + botón de chat.
                             Row(
                               children: [
                                 const CircleAvatar(
@@ -383,6 +402,15 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                                         ),
                                       ),
                                     ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: () => _abrirChat(nombreTecnico),
+                                  icon: const Icon(Icons.chat_bubble_outline),
+                                  color: AppColors.primary,
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppColors.background,
+                                    shape: const CircleBorder(),
                                   ),
                                 ),
                               ],
