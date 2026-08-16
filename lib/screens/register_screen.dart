@@ -5,7 +5,7 @@ import 'package:tecnigo/theme/app_colors.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'home_cliente_screen.dart';
+import 'cliente_main_screen.dart';
 import 'home_tecnico_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -159,7 +159,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         MaterialPageRoute(
           builder: (_) => selectedRole == 'tecnico'
               ? const HomeTecnicoScreen()
-              : const HomeClienteScreen(),
+              : const ClienteMainScreen(),
         ),
         (route) => false,
       );
