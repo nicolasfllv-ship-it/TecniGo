@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -39,6 +41,7 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
   LatLng? _tecnicoPos;
   Timer? _debounceEta;
   bool _cancelando = false;
+  Uint8List? _fotoBytesTecnico;
 
   late final LatLng _clientePos;
 
@@ -178,12 +181,18 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
 
               String nombreTecnico = 'Técnico';
               LatLng? tecnicoPos;
+              Uint8List? fotoBytesTecnico;
 
               if (tecnicoSnap.hasData && tecnicoSnap.data!.exists) {
                 final data =
                     tecnicoSnap.data!.data() as Map<String, dynamic>;
                 if ((data['nombre'] ?? '').toString().isNotEmpty) {
                   nombreTecnico = data['nombre'];
+                }
+                if ((data['fotoBase64'] ?? '').toString().isNotEmpty) {
+                  try {
+                    fotoBytesTecnico = base64Decode(data['fotoBase64']);
+                  } catch (_) {}
                 }
                 if (data['lat'] != null && data['lng'] != null) {
                   tecnicoPos = LatLng(
@@ -192,6 +201,7 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                   );
                 }
               }
+              _fotoBytesTecnico = fotoBytesTecnico;
 
               if (tecnicoPos != null &&
                   (_tecnicoPos == null ||
@@ -213,58 +223,119 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                               'Esperando ubicación del técnico...',
                             ),
                           )
-                        : FlutterMap(
-                            mapController: _mapController,
-                            options: MapOptions(
-                              initialCenter: tecnicoPos,
-                              initialZoom: 14,
-                            ),
+                        : Stack(
                             children: [
-                              TileLayer(
-                                urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.example.tecnigo',
-                              ),
-                              if (_ruta != null &&
-                                  _ruta!.puntosRuta.length > 1)
-                                PolylineLayer(
-                                  polylines: [
-                                    Polyline(
-                                      points: _ruta!.puntosRuta,
-                                      strokeWidth: 4,
-                                      color: AppColors.primary,
-                                    ),
-                                  ],
+                              FlutterMap(
+                                mapController: _mapController,
+                                options: MapOptions(
+                                  initialCenter: tecnicoPos,
+                                  initialZoom: 14,
                                 ),
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: tecnicoPos,
-                                    width: 54,
-                                    height: 54,
-                                    child: const ScannerFrame(
-                                      tamano: 16,
-                                      grosor: 2,
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.engineering,
-                                          color: Colors.orange,
-                                          size: 30,
+                                children: [
+                                  TileLayer(
+                                    urlTemplate:
+                                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                    userAgentPackageName: 'com.example.tecnigo',
+                                  ),
+                                  if (_ruta != null &&
+                                      _ruta!.puntosRuta.length > 1)
+                                    PolylineLayer(
+                                      polylines: [
+                                        Polyline(
+                                          points: _ruta!.puntosRuta,
+                                          strokeWidth: 5,
+                                          color: AppColors.clienteAccent,
+                                        ),
+                                      ],
+                                    ),
+                                  MarkerLayer(
+                                    markers: [
+                                      Marker(
+                                        point: tecnicoPos,
+                                        width: 40,
+                                        height: 40,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: AppColors.clienteAccent,
+                                              width: 3,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.3),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: CircleAvatar(
+                                            radius: 17,
+                                            backgroundColor:
+                                                AppColors.surface,
+                                            backgroundImage:
+                                                _fotoBytesTecnico != null
+                                                    ? MemoryImage(
+                                                        _fotoBytesTecnico!)
+                                                    : null,
+                                            child: _fotoBytesTecnico == null
+                                                ? const Icon(
+                                                    Icons.engineering,
+                                                    color: Colors.orange,
+                                                    size: 18,
+                                                  )
+                                                : null,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                  Marker(
-                                    point: _clientePos,
-                                    width: 44,
-                                    height: 44,
-                                    child: const Icon(
-                                      Icons.home,
-                                      color: Colors.blue,
-                                      size: 36,
-                                    ),
+                                      Marker(
+                                        point: _clientePos,
+                                        width: 34,
+                                        height: 34,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: AppColors.background,
+                                            border: Border.all(
+                                              color: Colors.white,
+                                              width: 2,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.3),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.home,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
+                              ),
+                              // Botón "recentrar", como en Waze: vuelve a
+                              // centrar el mapa en el técnico si te
+                              // alejaste o te perdiste mirando otra zona.
+                              Positioned(
+                                right: 14,
+                                bottom: 14,
+                                child: FloatingActionButton.small(
+                                  heroTag: 'recentrar_cliente',
+                                  backgroundColor: AppColors.surface,
+                                  foregroundColor: AppColors.clienteAccent,
+                                  onPressed: () {
+                                    _mapController.move(tecnicoPos!, 15);
+                                  },
+                                  child: const Icon(Icons.my_location),
+                                ),
                               ),
                             ],
                           ),
@@ -373,11 +444,16 @@ class _SeguimientoScreenState extends State<SeguimientoScreen> {
                             // Datos del técnico + botón de chat.
                             Row(
                               children: [
-                                const CircleAvatar(
+                                CircleAvatar(
                                   radius: 24,
                                   backgroundColor: AppColors.background,
-                                  child: Icon(Icons.engineering,
-                                      color: AppColors.primary),
+                                  backgroundImage: fotoBytesTecnico != null
+                                      ? MemoryImage(fotoBytesTecnico)
+                                      : null,
+                                  child: fotoBytesTecnico == null
+                                      ? const Icon(Icons.engineering,
+                                          color: AppColors.primary)
+                                      : null,
                                 ),
                                 const SizedBox(width: 14),
                                 Expanded(

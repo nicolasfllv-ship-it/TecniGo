@@ -211,120 +211,130 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
       appBar: AppBar(
         title: const Text('TecniGo Técnico'),
       ),
-      body: Column(
-        children: [
-          const _SaludoTecnico(),
-          const TecnicoDisponibilidad(),
-          const ServiciosActualesTecnico(),
-          Expanded(
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser?.uid)
-                  .snapshots(),
-              builder: (context, userSnap) {
-                bool disponible = true;
-                if (userSnap.hasData && userSnap.data!.exists) {
-                  final data =
-                      userSnap.data!.data() as Map<String, dynamic>;
-                  disponible = data['disponible'] ?? true;
-                }
+      body: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _SaludoTecnico(),
+                TecnicoDisponibilidad(),
+                ServiciosActualesTecnico(),
+              ],
+            ),
+          ),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(FirebaseAuth.instance.currentUser?.uid)
+                .snapshots(),
+            builder: (context, userSnap) {
+              bool disponible = true;
+              if (userSnap.hasData && userSnap.data!.exists) {
+                final data = userSnap.data!.data() as Map<String, dynamic>;
+                disponible = data['disponible'] ?? true;
+              }
 
-                if (!disponible) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(30),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.pause_circle_outline,
-                              color: AppColors.subtitle, size: 48),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Activa tu disponibilidad para ver los '
-                            'servicios cercanos.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: AppColors.subtitle),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
+              if (!disponible) {
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: const _EstadoVacio(
+                    icono: Icons.pause_circle_outline,
+                    texto: 'Activa tu disponibilidad para ver los '
+                        'servicios cercanos.',
+                  ),
+                );
+              }
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('servicios')
-                      .where('estado', isEqualTo: 'pendiente')
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('servicios')
+                    .where('estado', isEqualTo: 'pendiente')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
                         child: Text(
                           'Error: ${snapshot.error}',
                           style: const TextStyle(color: AppColors.error),
                         ),
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    if (!snapshot.hasData) {
-                      return const Center(
+                  if (!snapshot.hasData) {
+                    return const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
                         child: CircularProgressIndicator(
                             color: AppColors.primary),
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    final todosLosServicios = snapshot.data!.docs;
+                  final todosLosServicios = snapshot.data!.docs;
 
-                    if (todosLosServicios.isEmpty) {
-                      return _EstadoVacio(
+                  if (todosLosServicios.isEmpty) {
+                    return const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EstadoVacio(
                         icono: Icons.inbox_outlined,
                         texto: 'No hay servicios pendientes por ahora.',
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    // Si todavía no sabemos dónde está el técnico, no
-                    // podemos calcular distancias todavía.
-                    if (_miPosicion == null) {
-                      return _EstadoVacio(
+                  // Si todavía no sabemos dónde está el técnico, no
+                  // podemos calcular distancias todavía.
+                  if (_miPosicion == null) {
+                    return const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EstadoVacio(
                         icono: Icons.my_location,
                         texto: 'Obteniendo tu ubicación para mostrarte\n'
                             'los servicios más cercanos...',
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    const Distance distanciaCalc = Distance();
+                  const Distance distanciaCalc = Distance();
 
-                    // Calculamos qué tan lejos está cada solicitud del
-                    // técnico, y nos quedamos solo con las que están
-                    // dentro del radio permitido.
-                    final serviciosConDistancia = todosLosServicios
-                        .map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final posServicio = LatLng(
-                            (data['lat'] as num).toDouble(),
-                            (data['lng'] as num).toDouble(),
-                          );
-                          final km =
-                              distanciaCalc(_miPosicion!, posServicio) / 1000;
-                          return (doc: doc, km: km);
-                        })
-                        .where((item) => item.km <= _radioMaximoKm)
-                        .toList()
-                      ..sort((a, b) => a.km.compareTo(b.km));
+                  // Calculamos qué tan lejos está cada solicitud del
+                  // técnico, y nos quedamos solo con las que están
+                  // dentro del radio permitido.
+                  final serviciosConDistancia = todosLosServicios
+                      .map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final posServicio = LatLng(
+                          (data['lat'] as num).toDouble(),
+                          (data['lng'] as num).toDouble(),
+                        );
+                        final km =
+                            distanciaCalc(_miPosicion!, posServicio) / 1000;
+                        return (doc: doc, km: km);
+                      })
+                      .where((item) => item.km <= _radioMaximoKm)
+                      .toList()
+                    ..sort((a, b) => a.km.compareTo(b.km));
 
-                    if (serviciosConDistancia.isEmpty) {
-                      return _EstadoVacio(
+                  if (serviciosConDistancia.isEmpty) {
+                    return const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EstadoVacio(
                         icono: Icons.location_searching,
                         texto:
                             'No hay servicios cerca de ti en este momento.',
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+                  return SliverMainAxisGroup(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(18, 16, 18, 4),
                           child: Row(
                             children: [
                               const Text(
@@ -340,7 +350,8 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: AppColors.accent.withOpacity(0.15),
+                                  color:
+                                      AppColors.accent.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
@@ -355,56 +366,56 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
                             ],
                           ),
                         ),
-                        Expanded(
-                          child: ListView.builder(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            itemCount: serviciosConDistancia.length,
-                            itemBuilder: (context, index) {
-                              final servicio =
-                                  serviciosConDistancia[index].doc;
-                              final distanciaKm =
-                                  serviciosConDistancia[index].km;
-                              final data =
-                                  servicio.data() as Map<String, dynamic>;
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        sliver: SliverList.builder(
+                          itemCount: serviciosConDistancia.length,
+                          itemBuilder: (context, index) {
+                            final servicio =
+                                serviciosConDistancia[index].doc;
+                            final distanciaKm =
+                                serviciosConDistancia[index].km;
+                            final data =
+                                servicio.data() as Map<String, dynamic>;
 
-                              return _TarjetaServicio(
-                                icono: _iconoServicio(data['tipoServicio']),
-                                tipoServicio: data['tipoServicio'] ?? '',
-                                descripcion: data['descripcion'] ?? '',
-                                emailCliente: data['emailCliente'] ?? '',
-                                distanciaKm: distanciaKm,
-                                tiempoRelativo:
-                                    _tiempoRelativo(data['fecha']),
-                                cargando: _aceptando.contains(servicio.id),
-                                onVerRuta: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => TecnicoMapaScreen(
-                                        servicioId: servicio.id,
-                                        tecnicoId: FirebaseAuth
-                                            .instance.currentUser!.uid,
-                                        clienteLat:
-                                            (data['lat'] as num).toDouble(),
-                                        clienteLng:
-                                            (data['lng'] as num).toDouble(),
-                                        tipoServicio: data['tipoServicio'],
-                                      ),
+                            return _TarjetaServicio(
+                              icono: _iconoServicio(data['tipoServicio']),
+                              tipoServicio: data['tipoServicio'] ?? '',
+                              descripcion: data['descripcion'] ?? '',
+                              emailCliente: data['emailCliente'] ?? '',
+                              distanciaKm: distanciaKm,
+                              tiempoRelativo:
+                                  _tiempoRelativo(data['fecha']),
+                              cargando: _aceptando.contains(servicio.id),
+                              onVerRuta: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TecnicoMapaScreen(
+                                      servicioId: servicio.id,
+                                      tecnicoId: FirebaseAuth
+                                          .instance.currentUser!.uid,
+                                      clienteLat: (data['lat'] as num)
+                                          .toDouble(),
+                                      clienteLng: (data['lng'] as num)
+                                          .toDouble(),
+                                      tipoServicio: data['tipoServicio'],
                                     ),
-                                  );
-                                },
-                                onAceptar: () =>
-                                    _aceptarServicio(servicio.id),
-                              );
-                            },
-                          ),
+                                  ),
+                                );
+                              },
+                              onAceptar: () =>
+                                  _aceptarServicio(servicio.id),
+                            );
+                          },
                         ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         ],
       ),

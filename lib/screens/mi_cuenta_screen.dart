@@ -1,8 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tecnigo/screens/historial_screen.dart';
 import 'package:tecnigo/screens/configuracion_screen.dart';
+import 'package:tecnigo/screens/editar_perfil_screen.dart';
 import 'package:tecnigo/theme/app_colors.dart';
 import 'package:tecnigo/widgets/scanner_frame.dart';
 import 'login_screen.dart';
@@ -31,14 +34,20 @@ class MiCuentaScreen extends StatelessWidget {
                     .get(),
             builder: (context, snapshot) {
               String nombre = user?.email ?? '';
+              Uint8List? fotoBytes;
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
                 if ((data['nombre'] ?? '').toString().isNotEmpty) {
                   nombre = data['nombre'];
                 }
+                if ((data['fotoBase64'] ?? '').toString().isNotEmpty) {
+                  try {
+                    fotoBytes = base64Decode(data['fotoBase64']);
+                  } catch (_) {}
+                }
               }
 
-              return Container(
+                return Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 26),
                 decoration: BoxDecoration(
@@ -48,18 +57,32 @@ class MiCuentaScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    const ScannerFrame(
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EditarPerfilScreen()),
+                        );
+                      },
+                      child: ScannerFrame(
                       tamano: 14,
                       grosor: 2,
                       child: CircleAvatar(
                         radius: 46,
                         backgroundColor: AppColors.background,
-                        child: Icon(
-                          Icons.person,
-                          size: 50,
-                          color: AppColors.primary,
-                        ),
+                        backgroundImage: fotoBytes != null
+                            ? MemoryImage(fotoBytes)
+                            : null,
+                        child: fotoBytes == null
+                            ? const Icon(
+                                Icons.person,
+                                size: 50,
+                                color: AppColors.primary,
+                              )
+                            : null,
                       ),
+                    ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -80,6 +103,20 @@ class MiCuentaScreen extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EditarPerfilScreen()),
+                        );
+                      },
+                      child: const Text(
+                        'Editar perfil',
+                        style: TextStyle(color: AppColors.primary),
+                      ),
+                    ),
                   ],
                 ),
               );
