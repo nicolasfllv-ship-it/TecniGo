@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:tecnigo/theme/app_colors.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:tecnigo/widgets/categoria_card.dart';
+import 'direccion_picker_screen.dart';
 
 class SolicitarServicioScreen extends StatefulWidget {
   final String? tipoInicial;
@@ -23,10 +23,18 @@ class _SolicitarServicioScreenState
   late String tipoServicio;
   bool enviando = false;
 
+  UbicacionElegida? _ubicacion;
+
   @override
   void initState() {
     super.initState();
     tipoServicio = widget.tipoInicial ?? "Cámaras de seguridad";
+  }
+
+  @override
+  void dispose() {
+    descripcionController.dispose();
+    super.dispose();
   }
 
   // Las mismas 6 categorías que se muestran en el Home, para que el
@@ -55,7 +63,25 @@ class _SolicitarServicioScreenState
         Icons.key, Colors.brown),
   ];
 
+  Future<void> _elegirUbicacion() async {
+    final resultado = await Navigator.push<UbicacionElegida>(
+      context,
+      MaterialPageRoute(builder: (_) => const DireccionPickerScreen()),
+    );
+
+    if (resultado != null) {
+      setState(() => _ubicacion = resultado);
+    }
+  }
+
   Future<void> crearServicio() async {
+    if (_ubicacion == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Elige la ubicación del servicio')),
+      );
+      return;
+    }
+
     setState(() => enviando = true);
 
     try {
@@ -80,69 +106,16 @@ class _SolicitarServicioScreenState
         );
       }
 
-      bool serviceEnabled =
-          await Geolocator.isLocationServiceEnabled();
-
-      if (!serviceEnabled) {
-        throw Exception("El GPS está desactivado");
-      }
-
-      LocationPermission permission =
-          await Geolocator.checkPermission();
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied) {
-        throw Exception("Permiso de ubicación denegado");
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception(
-          "Activa el permiso de ubicación desde Configuración.",
-        );
-      }
-
-      Position position;
-      try {
-        // Precisión media (más rápida) y con límite de 10 segundos:
-        // si no consigue GPS en ese tiempo, no dejamos al cliente
-        // esperando indefinidamente.
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 10),
-        );
-      } on TimeoutException {
-        // Si se agotó el tiempo, intentamos usar la última ubicación
-        // conocida del celular en vez de fallar por completo.
-        // (Ojo: getLastKnownPosition no existe en la versión web,
-        // así que ahí simplemente no hay respaldo posible).
-        Position? ultima;
-        try {
-          ultima = await Geolocator.getLastKnownPosition();
-        } catch (_) {
-          ultima = null;
-        }
-
-        if (ultima == null) {
-          throw Exception(
-            "No se pudo obtener tu ubicación. Verifica que el GPS/"
-            "ubicación esté activado e intenta de nuevo.",
-          );
-        }
-        position = ultima;
-      }
-
       await FirebaseFirestore.instance.collection("servicios").add({
         "clienteId": user.uid,
         "emailCliente": user.email,
         "tipoServicio": tipoServicio,
         "descripcion": descripcionController.text.trim(),
+        "direccion": _ubicacion!.direccion,
         "estado": "pendiente",
         "fecha": Timestamp.now(),
-        "lat": position.latitude,
-        "lng": position.longitude,
+        "lat": _ubicacion!.lat,
+        "lng": _ubicacion!.lng,
       });
 
       if (!mounted) return;
@@ -202,6 +175,49 @@ class _SolicitarServicioScreenState
             ),
 
             const SizedBox(height: 25),
+
+            Material(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: _elegirUbicacion,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined,
+                          color: AppColors.clienteAccent),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _ubicacion?.direccion ??
+                              'Toca para elegir la ubicación',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _ubicacion == null
+                                ? AppColors.subtitle
+                                : AppColors.text,
+                            fontWeight: _ubicacion == null
+                                ? FontWeight.normal
+                                : FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right,
+                          color: AppColors.subtitle),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
 
             TextField(
               controller: descripcionController,

@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/eta_service.dart';
 import '../theme/app_colors.dart';
 import 'chat_screen.dart';
@@ -192,6 +195,85 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
     }
 
     _cambiarEstado({'estado': 'trabajando'});
+  }
+
+  // Pide una foto de evidencia (cámara o galería) antes de poder
+  // finalizar el servicio. Si el técnico cancela, no finaliza nada.
+  Future<void> _finalizarConEvidencia() async {
+    final origen = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Text(
+                'Necesitamos una foto del trabajo terminado para '
+                'finalizar el servicio',
+                style: TextStyle(
+                  color: AppColors.text,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined,
+                  color: AppColors.tecnicoAccent),
+              title: const Text('Tomar foto',
+                  style: TextStyle(color: AppColors.text)),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: AppColors.tecnicoAccent),
+              title: const Text('Elegir de la galería',
+                  style: TextStyle(color: AppColors.text)),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (origen == null) return;
+
+    final picker = ImagePicker();
+    final XFile? archivo = await picker.pickImage(
+      source: origen,
+      maxWidth: 500,
+      imageQuality: 65,
+    );
+
+    if (archivo == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Necesitas la foto de evidencia para poder finalizar'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final Uint8List bytes = await archivo.readAsBytes();
+    final String fotoBase64 = base64Encode(bytes);
+
+    _cambiarEstado(
+      {
+        'estado': 'finalizado',
+        'fechaFinalizacion': Timestamp.now(),
+        'fotoEvidencia': fotoBase64,
+      },
+      cerrarAlTerminar: true,
+    );
   }
 
   Future<void> _confirmarLiberar() async {
@@ -491,6 +573,27 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
                           ),
                         ],
 
+                        if (estado == 'trabajando') ...[
+                          const SizedBox(height: 10),
+                          const Row(
+                            children: [
+                              Icon(Icons.camera_alt_outlined,
+                                  size: 16, color: AppColors.subtitle),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Al finalizar te pediremos una foto de '
+                                  'evidencia del trabajo',
+                                  style: TextStyle(
+                                    color: AppColors.subtitle,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
                         const SizedBox(height: 14),
 
                         if (estado == 'aceptado')
@@ -565,18 +668,11 @@ class _TecnicoMapaScreenState extends State<TecnicoMapaScreen> {
                                         color: AppColors.background,
                                       ),
                                     )
-                                  : const Icon(Icons.check_circle),
+                                  : const Icon(Icons.camera_alt),
                               label: const Text('Finalizar servicio'),
                               onPressed: _actualizandoEstado
                                   ? null
-                                  : () => _cambiarEstado(
-                                        {
-                                          'estado': 'finalizado',
-                                          'fechaFinalizacion':
-                                              Timestamp.now(),
-                                        },
-                                        cerrarAlTerminar: true,
-                                      ),
+                                  : _finalizarConEvidencia,
                             ),
                           ),
 
