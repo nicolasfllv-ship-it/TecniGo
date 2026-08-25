@@ -1,6 +1,6 @@
-@@ -0,0 +1,532 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_map/flutter_map.dart';
@@ -21,10 +21,27 @@ class UbicacionElegida {
   });
 }
 
+class _SugerenciaGoogle {
+  final String placeId;
+  final String textoPrincipal;
+  final String textoSecundario;
+
+  _SugerenciaGoogle({
+    required this.placeId,
+    required this.textoPrincipal,
+    required this.textoSecundario,
+  });
+}
+
 /// Pantalla para elegir dónde va el servicio, al estilo Yango/DiDi:
 /// un pin fijo en el centro de la pantalla, y el mapa se arrastra por
-/// debajo para ajustarlo. También se puede buscar la dirección escrita
-/// (usando el buscador gratuito de OpenStreetMap, sin costo).
+/// debajo para ajustarlo.
+///
+/// La búsqueda de direcciones por texto usa Google Places API (New),
+/// porque el buscador gratuito (OpenStreetMap/Nominatim) no tiene
+/// bien mapeadas las direcciones con número de casa en Colombia.
+/// El ajuste fino arrastrando el mapa sigue usando el buscador
+/// gratuito, para mantener el costo lo más bajo posible.
 class DireccionPickerScreen extends StatefulWidget {
   const DireccionPickerScreen({super.key});
 
@@ -33,6 +50,13 @@ class DireccionPickerScreen extends StatefulWidget {
 }
 
 class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
+  // TODO: por seguridad, en un proyecto real esta llave no debería
+  // quedar escrita directo en el código fuente (lo ideal es pasarla
+  // con --dart-define al compilar). Para esta etapa del proyecto,
+  // así es suficiente.
+  static const String _googleApiKey =
+      'AIzaSyBjWT_rtzKse1U3MAOORRsQq_84PKH1km4';
+
   final MapController _mapController = MapController();
   final TextEditingController _busquedaController = TextEditingController();
   final FocusNode _busquedaFocus = FocusNode();
@@ -45,15 +69,23 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
   LatLng? _miUbicacionGPS;
   String? _miDireccionGPS;
 
-  List<Map<String, dynamic>> _sugerencias = [];
+  List<_SugerenciaGoogle> _sugerencias = [];
   Timer? _debounceBusqueda;
   bool _cargandoUbicacionInicial = true;
   bool _cargandoDireccion = false;
   bool _buscando = false;
+  int _idBusqueda = 0;
+
+  // El "session token" agrupa las pulsaciones de autocompletado con la
+  // consulta final de detalles, para que Google las cobre como una
+  // sola sesión en vez de por separado. Se renueva cada vez que se
+  // elige una sugerencia o se abre la pantalla.
+  String _sessionToken = '';
 
   @override
   void initState() {
     super.initState();
+    _sessionToken = _generarSessionToken();
     _busquedaFocus.addListener(_onFocoBusqueda);
     _obtenerUbicacionInicial();
   }
@@ -66,10 +98,14 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     super.dispose();
   }
 
+  String _generarSessionToken() {
+    final random = Random();
+    return List.generate(32, (_) => random.nextInt(16).toRadixString(16))
+        .join();
+  }
+
   void _onFocoBusqueda() {
     if (_busquedaFocus.hasFocus && _busquedaController.text.trim().isEmpty) {
-      // Al tocar el buscador sin haber escrito nada, mostramos la
-      // ubicación GPS actual como primera opción rápida.
       setState(() {});
     }
   }
@@ -95,7 +131,7 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
 
     if (mounted) {
       setState(() => _cargandoUbicacionInicial = false);
-      final direccion = await _consultarDireccion(_centro);
+      final direccion = await _consultarDireccionNominatim(_centro);
       if (mounted) {
         setState(() {
           _direccionActual = direccion;
@@ -107,55 +143,63 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     }
   }
 
-  // Arma una versión corta y legible de la dirección (calle + barrio +
-  // ciudad). Si el lugar no tiene calle/número (por ejemplo, cuando se
-  // busca un barrio), evitamos mostrar términos técnicos como "UPZs de
-  // Bogotá" y nos quedamos solo con el nombre del lugar + la ciudad.
+  // ---------- Reverse geocoding (gratuito) para el arrastre del mapa ----------
+
   String _direccionCorta(Map<String, dynamic> data) {
-    final direccionCompleta = data['address'] as Map<String, dynamic>?;
+    final addr = data['address'] as Map<String, dynamic>? ?? {};
 
-    if (direccionCompleta != null) {
-      final calle = direccionCompleta['road'] ??
-          direccionCompleta['pedestrian'] ??
-          direccionCompleta['residential'];
-      final numero = direccionCompleta['house_number'];
-      final barrio = direccionCompleta['neighbourhood'] ??
-          direccionCompleta['suburb'] ??
-          direccionCompleta['quarter'];
-      final ciudad = direccionCompleta['city'] ??
-          direccionCompleta['town'] ??
-          direccionCompleta['village'] ??
-          direccionCompleta['county'];
+    final calle = addr['road'] ?? addr['pedestrian'] ?? addr['residential'];
+    final numero = addr['house_number'];
+    final nombrePropio = data['name'] as String?;
 
-      if (calle != null) {
-        final partes = <String>[
-          numero != null ? '$calle #$numero' : '$calle',
-          if (barrio != null) '$barrio',
-          if (ciudad != null) '$ciudad',
-        ];
-        return partes.join(', ');
-      }
+    final barrio = addr['neighbourhood'] ??
+        addr['suburb'] ??
+        addr['quarter'] ??
+        addr['hamlet'] ??
+        addr['city_district'];
+
+    final ciudad = addr['city'] ??
+        addr['town'] ??
+        addr['municipality'] ??
+        addr['village'];
+
+    final partes = <String>[];
+
+    if (calle != null) {
+      partes.add(numero != null ? '$calle #$numero' : '$calle');
+      if (barrio != null) partes.add('$barrio');
+    } else if (barrio != null) {
+      partes.add('$barrio');
+    } else if (nombrePropio != null) {
+      partes.add(nombrePropio);
     }
 
-    // Sin calle (ej. resultado de un barrio/zona): usamos solo el
-    // nombre del lugar (primer segmento) y la ciudad (último segmento),
-    // sin toda la jerga administrativa que queda en el medio.
-    final display = (data['display_name'] ?? '').toString();
-    final segmentos =
-        display.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-
-    if (segmentos.isEmpty) return display;
-
-    final nombre = segmentos.first;
-    final ciudadFinal = segmentos.length > 1 ? segmentos.last : '';
-
-    if (ciudadFinal.isNotEmpty && ciudadFinal != nombre) {
-      return '$nombre, $ciudadFinal';
+    if (ciudad != null && !partes.contains(ciudad)) {
+      partes.add('$ciudad');
     }
-    return nombre;
+
+    String resultado;
+    if (partes.isEmpty) {
+      final display = (data['display_name'] ?? '').toString();
+      final primero = display.split(',').first.trim();
+      resultado = primero.isNotEmpty ? primero : display;
+    } else {
+      resultado = partes.join(', ');
+    }
+
+    resultado = resultado
+        .replaceAll(RegExp(r'UPZs?\s*(de\s*Bogot[áa])?', caseSensitive: false),
+            '')
+        .replaceAll(
+            RegExp(r'Per[íi]metro\s*Urbano\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*,\s*,\s*'), ', ')
+        .replaceAll(RegExp(r'^\s*,\s*|\s*,\s*$'), '')
+        .trim();
+
+    return resultado.isEmpty ? (data['display_name'] ?? '').toString() : resultado;
   }
 
-  Future<String> _consultarDireccion(LatLng punto) async {
+  Future<String> _consultarDireccionNominatim(LatLng punto) async {
     setState(() => _cargandoDireccion = true);
     try {
       final uri = Uri.parse(
@@ -186,12 +230,12 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     _centro = nuevoCentro;
     _debounceBusqueda?.cancel();
     _debounceBusqueda = Timer(const Duration(milliseconds: 700), () async {
-      final direccion = await _consultarDireccion(_centro);
+      final direccion = await _consultarDireccionNominatim(_centro);
       if (mounted) setState(() => _direccionActual = direccion);
     });
   }
 
-  int _idBusqueda = 0;
+  // ---------- Búsqueda por texto (Google Places, con costo mínimo) ----------
 
   Future<void> _buscarDireccion(String query) async {
     final idEstaBusqueda = ++_idBusqueda;
@@ -204,32 +248,53 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     setState(() => _buscando = true);
 
     try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/search'
-        '?q=${Uri.encodeComponent(query)}'
-        '&format=json&addressdetails=1&limit=5&countrycodes=co',
-      );
-      final respuesta = await http.get(
+      final uri =
+          Uri.parse('https://places.googleapis.com/v1/places:autocomplete');
+
+      final respuesta = await http.post(
         uri,
-        headers: {'User-Agent': 'TecniGoApp/1.0'},
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': _googleApiKey,
+        },
+        body: jsonEncode({
+          'input': query,
+          'includedRegionCodes': ['co'],
+          'languageCode': 'es',
+          'sessionToken': _sessionToken,
+        }),
       );
 
-      // Si mientras esperábamos la respuesta el usuario ya escribió
-      // algo más, esta respuesta quedó vieja: la ignoramos para que no
-      // le borre los resultados más recientes al usuario.
       if (idEstaBusqueda != _idBusqueda) return;
 
       if (respuesta.statusCode == 200) {
-        final List data = jsonDecode(respuesta.body);
-        if (mounted) {
-          setState(() {
-            _sugerencias = data.cast<Map<String, dynamic>>();
-          });
-        }
+        final data = jsonDecode(respuesta.body);
+        final List sugerenciasRaw = data['suggestions'] ?? [];
+
+        final nuevas = sugerenciasRaw
+            .map((s) {
+              final prediccion = s['placePrediction'];
+              if (prediccion == null) return null;
+
+              final formato = prediccion['structuredFormat'];
+              final principal = formato?['mainText']?['text'] ??
+                  prediccion['text']?['text'] ??
+                  '';
+              final secundario = formato?['secondaryText']?['text'] ?? '';
+
+              return _SugerenciaGoogle(
+                placeId: prediccion['placeId'] ?? '',
+                textoPrincipal: principal,
+                textoSecundario: secundario,
+              );
+            })
+            .whereType<_SugerenciaGoogle>()
+            .where((s) => s.placeId.isNotEmpty)
+            .toList();
+
+        if (mounted) setState(() => _sugerencias = nuevas);
       }
-      // Si la respuesta no fue 200 (por ejemplo, el buscador gratuito
-      // bloqueó la petición por ir muy seguido), dejamos la última
-      // lista de sugerencias válida en vez de vaciarla.
+      // Si falla, dejamos la última lista válida en vez de vaciarla.
     } catch (_) {
       // Igual: si falla la conexión, no borramos lo que ya se veía.
     } finally {
@@ -239,20 +304,54 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     }
   }
 
-  void _elegirSugerencia(Map<String, dynamic> sugerencia) {
-    final lat = double.parse(sugerencia['lat']);
-    final lon = double.parse(sugerencia['lon']);
-    final nuevoCentro = LatLng(lat, lon);
-
+  Future<void> _elegirSugerencia(_SugerenciaGoogle sugerencia) async {
     setState(() {
       _sugerencias = [];
       _busquedaController.clear();
-      _direccionActual = _direccionCorta(sugerencia);
-      _centro = nuevoCentro;
+      _cargandoDireccion = true;
     });
-
-    _mapController.move(nuevoCentro, 17);
     _busquedaFocus.unfocus();
+
+    try {
+      final uri = Uri.parse(
+          'https://places.googleapis.com/v1/places/${sugerencia.placeId}');
+
+      final respuesta = await http.get(
+        uri,
+        headers: {
+          'X-Goog-Api-Key': _googleApiKey,
+          'X-Goog-FieldMask': 'location,formattedAddress',
+          'sessionToken': _sessionToken,
+        },
+      );
+
+      if (respuesta.statusCode == 200) {
+        final data = jsonDecode(respuesta.body);
+        final lat = data['location']?['latitude'];
+        final lng = data['location']?['longitude'];
+        final direccion = data['formattedAddress'] ??
+            '${sugerencia.textoPrincipal}, ${sugerencia.textoSecundario}';
+
+        if (lat != null && lng != null) {
+          final nuevoCentro = LatLng(lat, lng);
+          setState(() {
+            _centro = nuevoCentro;
+            _direccionActual = direccion;
+          });
+          _mapController.move(nuevoCentro, 17);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo obtener esa dirección: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _cargandoDireccion = false);
+      // Nueva sesión para la próxima búsqueda.
+      _sessionToken = _generarSessionToken();
+    }
   }
 
   void _elegirMiUbicacion() {
@@ -296,7 +395,6 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
               onTap: () => _busquedaFocus.unfocus(),
               child: Stack(
                 children: [
-                  // Mapa de fondo.
                   FlutterMap(
                     mapController: _mapController,
                     options: MapOptions(
@@ -317,8 +415,6 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                     ],
                   ),
 
-                  // Pin fijo en el centro de la pantalla (el mapa se
-                  // mueve por debajo, el pin no se mueve).
                   const IgnorePointer(
                     child: Center(
                       child: Padding(
@@ -332,7 +428,6 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                     ),
                   ),
 
-                  // Barra de búsqueda arriba.
                   Positioned(
                     top: 14,
                     left: 14,
@@ -377,14 +472,13 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                               setState(() {});
                               _debounceBusqueda?.cancel();
                               _debounceBusqueda =
-                                  Timer(const Duration(milliseconds: 700), () {
+                                  Timer(const Duration(milliseconds: 400), () {
                                 _buscarDireccion(texto);
                               });
                             },
                           ),
                         ),
 
-                        // Opción rápida: usar mi ubicación actual.
                         if (mostrarMiUbicacion)
                           Container(
                             margin: const EdgeInsets.only(top: 6),
@@ -435,12 +529,23 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                                       Icons.location_on_outlined,
                                       color: AppColors.clienteAccent),
                                   title: Text(
-                                    _direccionCorta(s),
-                                    maxLines: 2,
+                                    s.textoPrincipal,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                        color: AppColors.text),
+                                      color: AppColors.text,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
+                                  subtitle: s.textoSecundario.isNotEmpty
+                                      ? Text(
+                                          s.textoSecundario,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: AppColors.subtitle),
+                                        )
+                                      : null,
                                   onTap: () => _elegirSugerencia(s),
                                 );
                               },
@@ -450,8 +555,6 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                     ),
                   ),
 
-                  // Botón "mi ubicación" para volver al GPS actual
-                  // directo desde el mapa.
                   Positioned(
                     right: 14,
                     bottom: 150,
@@ -466,8 +569,6 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                     ),
                   ),
 
-                  // Panel inferior con la dirección detectada y botón
-                  // de confirmar.
                   Positioned(
                     left: 0,
                     right: 0,
