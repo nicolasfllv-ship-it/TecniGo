@@ -267,6 +267,9 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
 
       if (idEstaBusqueda != _idBusqueda) return;
 
+      debugPrint('Google Places status: ${respuesta.statusCode}');
+      debugPrint('Google Places body: ${respuesta.body}');
+
       if (respuesta.statusCode == 200) {
         final data = jsonDecode(respuesta.body);
         final List sugerenciasRaw = data['suggestions'] ?? [];
@@ -295,7 +298,8 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
         if (mounted) setState(() => _sugerencias = nuevas);
       }
       // Si falla, dejamos la última lista válida en vez de vaciarla.
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Google Places error: $e');
       // Igual: si falla la conexión, no borramos lo que ya se veía.
     } finally {
       if (mounted && idEstaBusqueda == _idBusqueda) {
