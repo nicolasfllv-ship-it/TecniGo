@@ -21,7 +21,7 @@ class _ClienteMainScreenState extends State<ClienteMainScreen> {
   ];
 
   final titulos = const [
-    "TecniGo",
+    "Tecnosecurity",
     "Mis servicios",
     "Mi cuenta",
   ];

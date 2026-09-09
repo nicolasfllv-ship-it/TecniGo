@@ -347,7 +347,7 @@ class _PasoCuenta extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Y con qué rol vas a usar TecniGo',
+            'Y con qué rol vas a usar Tecnosecurity',
             style: TextStyle(color: AppColors.subtitle, fontSize: 13),
           ),
           const SizedBox(height: 22),

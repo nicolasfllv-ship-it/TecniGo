@@ -34,7 +34,7 @@ class SoporteTecnicoScreen extends StatelessWidget {
     final uri = Uri(
       scheme: 'mailto',
       path: 'soporte@tecnigo.com',
-      query: 'subject=Ayuda con TecniGo (Técnico)',
+      query: 'subject=Ayuda con Tecnosecurity (Técnico)',
     );
     await launchUrl(uri);
   }

@@ -135,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TecniGo'),
+        title: const Text('Tecnosecurity'),
         centerTitle: true,
       ),
       body: SafeArea(

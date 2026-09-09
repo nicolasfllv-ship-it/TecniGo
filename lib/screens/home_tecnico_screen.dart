@@ -209,7 +209,7 @@ class _HomeTecnicoScreenState extends State<HomeTecnicoScreen> {
       backgroundColor: AppColors.background,
       drawer: const TecnicoDrawer(),
       appBar: AppBar(
-        title: const Text('TecniGo Técnico'),
+        title: const Text('Tecnosecurity Técnico'),
       ),
       body: CustomScrollView(
         slivers: [

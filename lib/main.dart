@@ -13,11 +13,11 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(const TecniGoApp());
+  runApp(const TecnosecurityApp());
 }
 
-class TecniGoApp extends StatelessWidget {
-  const TecniGoApp({super.key});
+class TecnosecurityApp extends StatelessWidget {
+  const TecnosecurityApp({super.key});
 
   @override
   Widget build(BuildContext context) {

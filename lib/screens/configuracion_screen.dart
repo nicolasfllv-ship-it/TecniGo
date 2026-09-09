@@ -77,7 +77,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           const SizedBox(height: 20),
           const Center(
             child: Text(
-              'TecniGo · versión 1.0',
+              'Tecnosecurity · versión 1.0',
               style: TextStyle(color: Colors.grey),
             ),
           ),

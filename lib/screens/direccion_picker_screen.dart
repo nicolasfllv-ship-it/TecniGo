@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_map/flutter_map.dart';
@@ -21,27 +22,26 @@ class UbicacionElegida {
   });
 }
 
-class _SugerenciaGoogle {
-  final String placeId;
-  final String textoPrincipal;
-  final String textoSecundario;
+/// Sugerencia obtenida desde OpenStreetMap/Nominatim.
+class _SugerenciaNominatim {
+  final double lat;
+  final double lng;
+  final String nombre;
+  final String direccionCompleta;
 
-  _SugerenciaGoogle({
-    required this.placeId,
-    required this.textoPrincipal,
-    required this.textoSecundario,
+  _SugerenciaNominatim({
+    required this.lat,
+    required this.lng,
+    required this.nombre,
+    required this.direccionCompleta,
   });
 }
 
 /// Pantalla para elegir dónde va el servicio, al estilo Yango/DiDi:
-/// un pin fijo en el centro de la pantalla, y el mapa se arrastra por
-/// debajo para ajustarlo.
+/// un pin fijo en el centro de la pantalla y el mapa se arrastra por debajo.
 ///
-/// La búsqueda de direcciones por texto usa Google Places API (New),
-/// porque el buscador gratuito (OpenStreetMap/Nominatim) no tiene
-/// bien mapeadas las direcciones con número de casa en Colombia.
-/// El ajuste fino arrastrando el mapa sigue usando el buscador
-/// gratuito, para mantener el costo lo más bajo posible.
+/// La búsqueda de direcciones y el reverse geocoding utilizan
+/// OpenStreetMap/Nominatim, sin depender de Google Places.
 class DireccionPickerScreen extends StatefulWidget {
   const DireccionPickerScreen({super.key});
 
@@ -50,42 +50,35 @@ class DireccionPickerScreen extends StatefulWidget {
 }
 
 class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
-  // TODO: por seguridad, en un proyecto real esta llave no debería
-  // quedar escrita directo en el código fuente (lo ideal es pasarla
-  // con --dart-define al compilar). Para esta etapa del proyecto,
-  // así es suficiente.
-  static const String _googleApiKey =
-      'AIzaSyBjWT_rtzKse1U3MAOORRsQq_84PKH1km4';
-
   final MapController _mapController = MapController();
-  final TextEditingController _busquedaController = TextEditingController();
+  final TextEditingController _busquedaController =
+      TextEditingController();
   final FocusNode _busquedaFocus = FocusNode();
 
-  LatLng _centro = const LatLng(4.7110, -74.0721); // Bogotá, de respaldo
+  LatLng _centro = const LatLng(4.7110, -74.0721);
   String _direccionActual = 'Mueve el mapa para ubicar el sitio';
 
-  // Guardamos aparte la ubicación GPS real (no la del pin, que puede
-  // moverse), para poder ofrecerla como "mi ubicación actual".
   LatLng? _miUbicacionGPS;
   String? _miDireccionGPS;
 
-  List<_SugerenciaGoogle> _sugerencias = [];
+  List<_SugerenciaNominatim> _sugerencias = [];
+
   Timer? _debounceBusqueda;
+  Timer? _debounceMapa;
+
   bool _cargandoUbicacionInicial = true;
   bool _cargandoDireccion = false;
   bool _buscando = false;
+
   int _idBusqueda = 0;
 
-  // El "session token" agrupa las pulsaciones de autocompletado con la
-  // consulta final de detalles, para que Google las cobre como una
-  // sola sesión en vez de por separado. Se renueva cada vez que se
-  // elige una sugerencia o se abre la pantalla.
-  String _sessionToken = '';
+  /// Para no hacer demasiadas consultas seguidas a Nominatim.
+  DateTime? _ultimaConsultaBusqueda;
 
   @override
   void initState() {
     super.initState();
-    _sessionToken = _generarSessionToken();
+
     _busquedaFocus.addListener(_onFocoBusqueda);
     _obtenerUbicacionInicial();
   }
@@ -93,72 +86,99 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
   @override
   void dispose() {
     _debounceBusqueda?.cancel();
+    _debounceMapa?.cancel();
+
     _busquedaController.dispose();
     _busquedaFocus.dispose();
+
     super.dispose();
   }
 
-  String _generarSessionToken() {
-    final random = Random();
-    return List.generate(32, (_) => random.nextInt(16).toRadixString(16))
-        .join();
-  }
-
   void _onFocoBusqueda() {
-    if (_busquedaFocus.hasFocus && _busquedaController.text.trim().isEmpty) {
+    if (mounted) {
       setState(() {});
     }
   }
 
+  // ============================================================
+  // UBICACIÓN GPS
+  // ============================================================
+
   Future<void> _obtenerUbicacionInicial() async {
     try {
-      final servicioActivo = await Geolocator.isLocationServiceEnabled();
+      final servicioActivo =
+          await Geolocator.isLocationServiceEnabled();
+
       if (servicioActivo) {
-        final permiso = await Geolocator.checkPermission();
+        LocationPermission permiso =
+            await Geolocator.checkPermission();
+
+        if (permiso == LocationPermission.denied) {
+          permiso = await Geolocator.requestPermission();
+        }
+
         if (permiso != LocationPermission.denied &&
             permiso != LocationPermission.deniedForever) {
           final pos = await Geolocator.getCurrentPosition(
             desiredAccuracy: LocationAccuracy.medium,
             timeLimit: const Duration(seconds: 8),
           );
+
           _centro = LatLng(pos.latitude, pos.longitude);
           _miUbicacionGPS = _centro;
         }
       }
     } catch (_) {
-      // Si falla, nos quedamos con el punto de respaldo (Bogotá).
+      // Si falla el GPS, usamos Bogotá como ubicación de respaldo.
     }
 
-    if (mounted) {
-      setState(() => _cargandoUbicacionInicial = false);
-      final direccion = await _consultarDireccionNominatim(_centro);
-      if (mounted) {
-        setState(() {
-          _direccionActual = direccion;
-          if (_miUbicacionGPS != null) {
-            _miDireccionGPS = direccion;
-          }
-        });
+    if (!mounted) return;
+
+    setState(() {
+      _cargandoUbicacionInicial = false;
+    });
+
+    final direccion =
+        await _consultarDireccionNominatim(_centro);
+
+    if (!mounted) return;
+
+    setState(() {
+      _direccionActual = direccion;
+
+      if (_miUbicacionGPS != null) {
+        _miDireccionGPS = direccion;
       }
-    }
+    });
   }
 
-  // ---------- Reverse geocoding (gratuito) para el arrastre del mapa ----------
+  // ============================================================
+  // FORMATEAR DIRECCIÓN
+  // ============================================================
 
   String _direccionCorta(Map<String, dynamic> data) {
-    final addr = data['address'] as Map<String, dynamic>? ?? {};
+    final addr =
+        data['address'] as Map<String, dynamic>? ?? {};
 
-    final calle = addr['road'] ?? addr['pedestrian'] ?? addr['residential'];
+    final calle =
+        addr['road'] ??
+        addr['pedestrian'] ??
+        addr['residential'] ??
+        addr['street'];
+
     final numero = addr['house_number'];
+
     final nombrePropio = data['name'] as String?;
 
-    final barrio = addr['neighbourhood'] ??
+    final barrio =
+        addr['neighbourhood'] ??
         addr['suburb'] ??
         addr['quarter'] ??
         addr['hamlet'] ??
         addr['city_district'];
 
-    final ciudad = addr['city'] ??
+    final ciudad =
+        addr['city'] ??
         addr['town'] ??
         addr['municipality'] ??
         addr['village'];
@@ -166,209 +186,391 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     final partes = <String>[];
 
     if (calle != null) {
-      partes.add(numero != null ? '$calle #$numero' : '$calle');
-      if (barrio != null) partes.add('$barrio');
+      if (numero != null) {
+        partes.add('$calle #$numero');
+      } else {
+        partes.add('$calle');
+      }
+
+      if (barrio != null) {
+        partes.add('$barrio');
+      }
     } else if (barrio != null) {
       partes.add('$barrio');
-    } else if (nombrePropio != null) {
+    } else if (nombrePropio != null &&
+        nombrePropio.trim().isNotEmpty) {
       partes.add(nombrePropio);
     }
 
-    if (ciudad != null && !partes.contains(ciudad)) {
+    if (ciudad != null &&
+        ciudad.toString().trim().isNotEmpty &&
+        !partes.contains(ciudad)) {
       partes.add('$ciudad');
     }
 
     String resultado;
+
     if (partes.isEmpty) {
-      final display = (data['display_name'] ?? '').toString();
-      final primero = display.split(',').first.trim();
-      resultado = primero.isNotEmpty ? primero : display;
+      final display =
+          (data['display_name'] ?? '').toString();
+
+      final primero =
+          display.split(',').first.trim();
+
+      resultado =
+          primero.isNotEmpty ? primero : display;
     } else {
       resultado = partes.join(', ');
     }
 
     resultado = resultado
-        .replaceAll(RegExp(r'UPZs?\s*(de\s*Bogot[áa])?', caseSensitive: false),
-            '')
         .replaceAll(
-            RegExp(r'Per[íi]metro\s*Urbano\s*', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\s*,\s*,\s*'), ', ')
-        .replaceAll(RegExp(r'^\s*,\s*|\s*,\s*$'), '')
+          RegExp(
+            r'UPZs?\s*(de\s*Bogot[áa])?',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'Per[íi]metro\s*Urbano\s*',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'\s*,\s*,\s*'),
+          ', ',
+        )
+        .replaceAll(
+          RegExp(r'^\s*,\s*|\s*,\s*$'),
+          '',
+        )
         .trim();
 
-    return resultado.isEmpty ? (data['display_name'] ?? '').toString() : resultado;
+    if (resultado.isEmpty) {
+      return (data['display_name'] ?? '').toString();
+    }
+
+    return resultado;
   }
 
-  Future<String> _consultarDireccionNominatim(LatLng punto) async {
-    setState(() => _cargandoDireccion = true);
+  // ============================================================
+  // REVERSE GEOCODING
+  // COORDENADAS -> DIRECCIÓN
+  // ============================================================
+
+  Future<String> _consultarDireccionNominatim(
+    LatLng punto,
+  ) async {
+    if (mounted) {
+      setState(() {
+        _cargandoDireccion = true;
+      });
+    }
+
     try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse'
-        '?lat=${punto.latitude}&lon=${punto.longitude}'
-        '&format=json&addressdetails=1',
+      final uri = Uri.https(
+        'nominatim.openstreetmap.org',
+        '/reverse',
+        {
+          'lat': punto.latitude.toString(),
+          'lon': punto.longitude.toString(),
+          'format': 'json',
+          'addressdetails': '1',
+          'accept-language': 'es',
+        },
       );
+
       final respuesta = await http.get(
         uri,
-        headers: {'User-Agent': 'TecniGoApp/1.0'},
+        headers: {
+          'User-Agent':
+              'TecnosecurityApp/1.0 (contacto@tecnigo.app)',
+          'Accept': 'application/json',
+        },
       );
 
       if (respuesta.statusCode == 200) {
         final data = jsonDecode(respuesta.body);
-        return _direccionCorta(data);
+
+        if (data is Map<String, dynamic>) {
+          return _direccionCorta(data);
+        }
       }
     } catch (_) {
-      // Sigue abajo con el respaldo de coordenadas.
+      // Si falla, usamos las coordenadas.
     } finally {
-      if (mounted) setState(() => _cargandoDireccion = false);
+      if (mounted) {
+        setState(() {
+          _cargandoDireccion = false;
+        });
+      }
     }
 
     return 'Lat: ${punto.latitude.toStringAsFixed(5)}, '
         'Lng: ${punto.longitude.toStringAsFixed(5)}';
   }
 
+  // ============================================================
+  // MOVER MAPA
+  // ============================================================
+
   void _onMapaSeMovio(LatLng nuevoCentro) {
     _centro = nuevoCentro;
-    _debounceBusqueda?.cancel();
-    _debounceBusqueda = Timer(const Duration(milliseconds: 700), () async {
-      final direccion = await _consultarDireccionNominatim(_centro);
-      if (mounted) setState(() => _direccionActual = direccion);
+
+    _debounceMapa?.cancel();
+
+    _debounceMapa =
+        Timer(const Duration(milliseconds: 900), () async {
+      final direccion =
+          await _consultarDireccionNominatim(_centro);
+
+      if (!mounted) return;
+
+      setState(() {
+        _direccionActual = direccion;
+      });
     });
   }
 
-  // ---------- Búsqueda por texto (Google Places, con costo mínimo) ----------
+  // ============================================================
+  // BÚSQUEDA POR TEXTO
+  // OPENSTREETMAP / NOMINATIM
+  // ============================================================
 
   Future<void> _buscarDireccion(String query) async {
+    final texto = query.trim();
+
     final idEstaBusqueda = ++_idBusqueda;
 
-    if (query.trim().length < 2) {
-      if (mounted) setState(() => _sugerencias = []);
+    if (texto.length < 3) {
+      if (mounted) {
+        setState(() {
+          _sugerencias = [];
+          _buscando = false;
+        });
+      }
       return;
     }
 
-    setState(() => _buscando = true);
+    // Evitamos consultas demasiado rápidas.
+    final ahora = DateTime.now();
 
-    try {
-      final uri =
-          Uri.parse('https://places.googleapis.com/v1/places:autocomplete');
+    if (_ultimaConsultaBusqueda != null) {
+      final diferencia =
+          ahora.difference(_ultimaConsultaBusqueda!);
 
-      final respuesta = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': _googleApiKey,
-        },
-        body: jsonEncode({
-          'input': query,
-          'includedRegionCodes': ['co'],
-          'languageCode': 'es',
-          'sessionToken': _sessionToken,
-        }),
-      );
-
-      if (idEstaBusqueda != _idBusqueda) return;
-
-      debugPrint('Google Places status: ${respuesta.statusCode}');
-      debugPrint('Google Places body: ${respuesta.body}');
-
-      if (respuesta.statusCode == 200) {
-        final data = jsonDecode(respuesta.body);
-        final List sugerenciasRaw = data['suggestions'] ?? [];
-
-        final nuevas = sugerenciasRaw
-            .map((s) {
-              final prediccion = s['placePrediction'];
-              if (prediccion == null) return null;
-
-              final formato = prediccion['structuredFormat'];
-              final principal = formato?['mainText']?['text'] ??
-                  prediccion['text']?['text'] ??
-                  '';
-              final secundario = formato?['secondaryText']?['text'] ?? '';
-
-              return _SugerenciaGoogle(
-                placeId: prediccion['placeId'] ?? '',
-                textoPrincipal: principal,
-                textoSecundario: secundario,
-              );
-            })
-            .whereType<_SugerenciaGoogle>()
-            .where((s) => s.placeId.isNotEmpty)
-            .toList();
-
-        if (mounted) setState(() => _sugerencias = nuevas);
-      }
-      // Si falla, dejamos la última lista válida en vez de vaciarla.
-    } catch (e) {
-      debugPrint('Google Places error: $e');
-      // Igual: si falla la conexión, no borramos lo que ya se veía.
-    } finally {
-      if (mounted && idEstaBusqueda == _idBusqueda) {
-        setState(() => _buscando = false);
+      if (diferencia.inMilliseconds < 1100) {
+        await Future.delayed(
+          Duration(
+            milliseconds:
+                1100 - diferencia.inMilliseconds,
+          ),
+        );
       }
     }
-  }
 
-  Future<void> _elegirSugerencia(_SugerenciaGoogle sugerencia) async {
-    setState(() {
-      _sugerencias = [];
-      _busquedaController.clear();
-      _cargandoDireccion = true;
-    });
-    _busquedaFocus.unfocus();
+    if (idEstaBusqueda != _idBusqueda) return;
+
+    _ultimaConsultaBusqueda = DateTime.now();
+
+    if (mounted) {
+      setState(() {
+        _buscando = true;
+      });
+    }
 
     try {
-      final uri = Uri.parse(
-          'https://places.googleapis.com/v1/places/${sugerencia.placeId}');
+      final uri = Uri.https(
+        'nominatim.openstreetmap.org',
+        '/search',
+        {
+          'q': texto,
+          'format': 'jsonv2',
+          'addressdetails': '1',
+          'limit': '6',
+          'countrycodes': 'co',
+          'accept-language': 'es',
+        },
+      );
 
       final respuesta = await http.get(
         uri,
         headers: {
-          'X-Goog-Api-Key': _googleApiKey,
-          'X-Goog-FieldMask': 'location,formattedAddress',
-          'sessionToken': _sessionToken,
+          'User-Agent':
+              'TecniGoApp/1.0 (contacto@tecnigo.app)',
+          'Accept': 'application/json',
         },
       );
 
+      if (idEstaBusqueda != _idBusqueda) return;
+
       if (respuesta.statusCode == 200) {
         final data = jsonDecode(respuesta.body);
-        final lat = data['location']?['latitude'];
-        final lng = data['location']?['longitude'];
-        final direccion = data['formattedAddress'] ??
-            '${sugerencia.textoPrincipal}, ${sugerencia.textoSecundario}';
 
-        if (lat != null && lng != null) {
-          final nuevoCentro = LatLng(lat, lng);
-          setState(() {
-            _centro = nuevoCentro;
-            _direccionActual = direccion;
-          });
-          _mapController.move(nuevoCentro, 17);
+        if (data is List) {
+          final nuevas =
+              <_SugerenciaNominatim>[];
+
+          for (final item in data) {
+            if (item is! Map<String, dynamic>) {
+              continue;
+            }
+
+            final latString =
+                item['lat']?.toString();
+
+            final lngString =
+                item['lon']?.toString();
+
+            if (latString == null ||
+                lngString == null) {
+              continue;
+            }
+
+            final lat =
+                double.tryParse(latString);
+
+            final lng =
+                double.tryParse(lngString);
+
+            if (lat == null || lng == null) {
+              continue;
+            }
+
+            final display =
+                (item['display_name'] ?? '')
+                    .toString();
+
+            final direccion =
+                _direccionCorta(item);
+
+            final nombre =
+                (item['name'] ?? '')
+                    .toString()
+                    .trim();
+
+            String titulo;
+
+            if (nombre.isNotEmpty) {
+              titulo = nombre;
+            } else if (direccion.isNotEmpty) {
+              titulo = direccion
+                  .split(',')
+                  .first
+                  .trim();
+            } else {
+              titulo = display
+                  .split(',')
+                  .first
+                  .trim();
+            }
+
+            nuevas.add(
+              _SugerenciaNominatim(
+                lat: lat,
+                lng: lng,
+                nombre: titulo,
+                direccionCompleta:
+                    display.isNotEmpty
+                        ? display
+                        : direccion,
+              ),
+            );
+          }
+
+          if (mounted) {
+            setState(() {
+              _sugerencias = nuevas;
+            });
+          }
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo obtener esa dirección: $e')),
-        );
-      }
+      debugPrint(
+        'Nominatim search error: $e',
+      );
     } finally {
-      if (mounted) setState(() => _cargandoDireccion = false);
-      // Nueva sesión para la próxima búsqueda.
-      _sessionToken = _generarSessionToken();
+      if (mounted &&
+          idEstaBusqueda == _idBusqueda) {
+        setState(() {
+          _buscando = false;
+        });
+      }
     }
   }
+
+  // ============================================================
+  // ELEGIR RESULTADO
+  // ============================================================
+
+  void _elegirSugerencia(
+    _SugerenciaNominatim sugerencia,
+  ) {
+    final nuevoCentro = LatLng(
+      sugerencia.lat,
+      sugerencia.lng,
+    );
+
+    setState(() {
+      _sugerencias = [];
+      _busquedaController.clear();
+      _busquedaFocus.unfocus();
+
+      _centro = nuevoCentro;
+
+      _direccionActual =
+          _direccionBonitaDesdeSugerencia(
+        sugerencia,
+      );
+
+      _cargandoDireccion = false;
+    });
+
+    _mapController.move(
+      nuevoCentro,
+      17,
+    );
+  }
+
+  String _direccionBonitaDesdeSugerencia(
+    _SugerenciaNominatim sugerencia,
+  ) {
+    final texto =
+        sugerencia.direccionCompleta.trim();
+
+    if (texto.isNotEmpty) {
+      return texto;
+    }
+
+    return sugerencia.nombre;
+  }
+
+  // ============================================================
+  // MI UBICACIÓN
+  // ============================================================
 
   void _elegirMiUbicacion() {
     if (_miUbicacionGPS == null) return;
 
     setState(() {
       _centro = _miUbicacionGPS!;
-      _direccionActual = _miDireccionGPS ?? _direccionActual;
+      _direccionActual =
+          _miDireccionGPS ?? _direccionActual;
     });
 
-    _mapController.move(_miUbicacionGPS!, 17);
+    _mapController.move(
+      _miUbicacionGPS!,
+      17,
+    );
+
     _busquedaFocus.unfocus();
   }
+
+  // ============================================================
+  // CONFIRMAR
+  // ============================================================
 
   void _confirmar() {
     Navigator.pop(
@@ -381,176 +583,402 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
     );
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
-    final mostrarMiUbicacion = _busquedaFocus.hasFocus &&
+    final mostrarMiUbicacion =
+        _busquedaFocus.hasFocus &&
         _busquedaController.text.trim().isEmpty &&
         _miUbicacionGPS != null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
+
       appBar: AppBar(
-        title: const Text('¿Dónde es el servicio?'),
+        title: const Text(
+          '¿Dónde es el servicio?',
+        ),
       ),
+
       body: _cargandoUbicacionInicial
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.clienteAccent))
+              child: CircularProgressIndicator(
+                color: AppColors.clienteAccent,
+              ),
+            )
           : GestureDetector(
-              onTap: () => _busquedaFocus.unfocus(),
+              onTap: () {
+                _busquedaFocus.unfocus();
+
+                if (mounted) {
+                  setState(() {});
+                }
+              },
+
               child: Stack(
                 children: [
+                  // =================================================
+                  // MAPA
+                  // =================================================
+
                   FlutterMap(
-                    mapController: _mapController,
+                    mapController:
+                        _mapController,
+
                     options: MapOptions(
                       initialCenter: _centro,
                       initialZoom: 16,
-                      onPositionChanged: (posicion, hasGesto) {
-                        if (hasGesto && posicion.center != null) {
-                          _onMapaSeMovio(posicion.center!);
+
+                      onPositionChanged:
+                          (posicion, hasGesto) {
+                        if (hasGesto &&
+                            posicion.center !=
+                                null) {
+                          _onMapaSeMovio(
+                            posicion.center!,
+                          );
                         }
                       },
                     ),
+
                     children: [
                       TileLayer(
                         urlTemplate:
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.tecnigo',
+
+                        userAgentPackageName:
+                            'com.example.tecnigo',
                       ),
                     ],
                   ),
 
+                  // =================================================
+                  // PIN CENTRAL
+                  // =================================================
+
                   const IgnorePointer(
                     child: Center(
                       child: Padding(
-                        padding: EdgeInsets.only(bottom: 40),
+                        padding:
+                            EdgeInsets.only(
+                          bottom: 40,
+                        ),
+
                         child: Icon(
                           Icons.location_on,
-                          color: AppColors.clienteAccent,
+                          color:
+                              AppColors.clienteAccent,
                           size: 48,
                         ),
                       ),
                     ),
                   ),
 
+                  // =================================================
+                  // BUSCADOR
+                  // =================================================
+
                   Positioned(
                     top: 14,
                     left: 14,
                     right: 14,
+
                     child: Column(
                       children: [
                         Material(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
+                          color:
+                              AppColors.surface,
+
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+
                           elevation: 4,
+
                           child: TextField(
-                            controller: _busquedaController,
-                            focusNode: _busquedaFocus,
-                            style: const TextStyle(color: AppColors.text),
-                            decoration: InputDecoration(
-                              hintText: 'Busca tu dirección',
-                              hintStyle:
-                                  const TextStyle(color: AppColors.subtitle),
-                              prefixIcon: const Icon(Icons.search,
-                                  color: AppColors.subtitle),
-                              suffixIcon: _buscando
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(14),
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: AppColors.clienteAccent,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: AppColors.surface,
+                            controller:
+                                _busquedaController,
+
+                            focusNode:
+                                _busquedaFocus,
+
+                            style:
+                                const TextStyle(
+                              color:
+                                  AppColors.text,
                             ),
+
+                            decoration:
+                                InputDecoration(
+                              hintText:
+                                  'Busca tu dirección',
+
+                              hintStyle:
+                                  const TextStyle(
+                                color:
+                                    AppColors.subtitle,
+                              ),
+
+                              prefixIcon:
+                                  const Icon(
+                                Icons.search,
+                                color:
+                                    AppColors.subtitle,
+                              ),
+
+                              suffixIcon:
+                                  _buscando
+                                      ? const Padding(
+                                          padding:
+                                              EdgeInsets
+                                                  .all(
+                                            14,
+                                          ),
+
+                                          child:
+                                              SizedBox(
+                                            width: 16,
+                                            height: 16,
+
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth:
+                                                  2,
+
+                                              color:
+                                                  AppColors
+                                                      .clienteAccent,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+
+                              border:
+                                  OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  14,
+                                ),
+
+                                borderSide:
+                                    BorderSide.none,
+                              ),
+
+                              filled: true,
+
+                              fillColor:
+                                  AppColors.surface,
+                            ),
+
                             onChanged: (texto) {
                               setState(() {});
-                              _debounceBusqueda?.cancel();
+
+                              _debounceBusqueda
+                                  ?.cancel();
+
                               _debounceBusqueda =
-                                  Timer(const Duration(milliseconds: 400), () {
-                                _buscarDireccion(texto);
-                              });
+                                  Timer(
+                                const Duration(
+                                  milliseconds: 700,
+                                ),
+                                () {
+                                  _buscarDireccion(
+                                    texto,
+                                  );
+                                },
+                              );
                             },
                           ),
                         ),
 
+                        // =================================================
+                        // MI UBICACIÓN
+                        // =================================================
+
                         if (mostrarMiUbicacion)
                           Container(
-                            margin: const EdgeInsets.only(top: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.border),
+                            margin:
+                                const EdgeInsets
+                                    .only(
+                              top: 6,
                             ),
+
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  AppColors.surface,
+
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                14,
+                              ),
+
+                              border: Border.all(
+                                color:
+                                    AppColors.border,
+                              ),
+                            ),
+
                             child: ListTile(
-                              leading: const Icon(Icons.my_location,
-                                  color: AppColors.clienteAccent),
-                              title: const Text(
+                              leading:
+                                  const Icon(
+                                Icons.my_location,
+                                color: AppColors
+                                    .clienteAccent,
+                              ),
+
+                              title:
+                                  const Text(
                                 'Usar mi ubicación actual',
-                                style: TextStyle(
-                                  color: AppColors.text,
-                                  fontWeight: FontWeight.bold,
+
+                                style:
+                                    TextStyle(
+                                  color:
+                                      AppColors.text,
+
+                                  fontWeight:
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
-                              subtitle: Text(
-                                _miDireccionGPS ?? '',
+
+                              subtitle:
+                                  Text(
+                                _miDireccionGPS ??
+                                    '',
+
                                 maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: AppColors.subtitle),
+
+                                overflow:
+                                    TextOverflow
+                                        .ellipsis,
+
+                                style:
+                                    const TextStyle(
+                                  color: AppColors
+                                      .subtitle,
+                                ),
                               ),
-                              onTap: _elegirMiUbicacion,
+
+                              onTap:
+                                  _elegirMiUbicacion,
                             ),
                           ),
 
-                        if (_sugerencias.isNotEmpty)
+                        // =================================================
+                        // RESULTADOS
+                        // =================================================
+
+                        if (_sugerencias
+                            .isNotEmpty)
                           Container(
-                            margin: const EdgeInsets.only(top: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.border),
+                            margin:
+                                const EdgeInsets
+                                    .only(
+                              top: 6,
                             ),
-                            child: ListView.separated(
+
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  AppColors.surface,
+
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                14,
+                              ),
+
+                              border: Border.all(
+                                color:
+                                    AppColors.border,
+                              ),
+                            ),
+
+                            child:
+                                ListView.separated(
                               shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _sugerencias.length,
-                              separatorBuilder: (_, __) => const Divider(
-                                  height: 1, color: AppColors.border),
-                              itemBuilder: (context, index) {
-                                final s = _sugerencias[index];
+
+                              physics:
+                                  const NeverScrollableScrollPhysics(),
+
+                              itemCount:
+                                  _sugerencias
+                                      .length,
+
+                              separatorBuilder:
+                                  (_, __) =>
+                                      const Divider(
+                                height: 1,
+                                color:
+                                    AppColors.border,
+                              ),
+
+                              itemBuilder:
+                                  (context,
+                                      index) {
+                                final s =
+                                    _sugerencias[
+                                        index];
+
                                 return ListTile(
-                                  leading: const Icon(
-                                      Icons.location_on_outlined,
-                                      color: AppColors.clienteAccent),
-                                  title: Text(
-                                    s.textoPrincipal,
+                                  leading:
+                                      const Icon(
+                                    Icons
+                                        .location_on_outlined,
+                                    color: AppColors
+                                        .clienteAccent,
+                                  ),
+
+                                  title:
+                                      Text(
+                                    s.nombre,
+
                                     maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.text,
-                                      fontWeight: FontWeight.w600,
+
+                                    overflow:
+                                        TextOverflow
+                                            .ellipsis,
+
+                                    style:
+                                        const TextStyle(
+                                      color:
+                                          AppColors
+                                              .text,
+
+                                      fontWeight:
+                                          FontWeight
+                                              .w600,
                                     ),
                                   ),
-                                  subtitle: s.textoSecundario.isNotEmpty
-                                      ? Text(
-                                          s.textoSecundario,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              color: AppColors.subtitle),
-                                        )
-                                      : null,
-                                  onTap: () => _elegirSugerencia(s),
+
+                                  subtitle:
+                                      Text(
+                                    s.direccionCompleta,
+
+                                    maxLines: 2,
+
+                                    overflow:
+                                        TextOverflow
+                                            .ellipsis,
+
+                                    style:
+                                        const TextStyle(
+                                      color: AppColors
+                                          .subtitle,
+                                    ),
+                                  ),
+
+                                  onTap: () =>
+                                      _elegirSugerencia(
+                                    s,
+                                  ),
                                 );
                               },
                             ),
@@ -559,71 +987,161 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
                     ),
                   ),
 
+                  // =================================================
+                  // BOTÓN MI UBICACIÓN
+                  // =================================================
+
                   Positioned(
                     right: 14,
                     bottom: 150,
-                    child: FloatingActionButton.small(
-                      heroTag: 'mi_ubicacion_picker',
-                      backgroundColor: AppColors.surface,
-                      foregroundColor: AppColors.clienteAccent,
-                      onPressed: _miUbicacionGPS == null
-                          ? null
-                          : _elegirMiUbicacion,
-                      child: const Icon(Icons.my_location),
+
+                    child:
+                        FloatingActionButton.small(
+                      heroTag:
+                          'mi_ubicacion_picker',
+
+                      backgroundColor:
+                          AppColors.surface,
+
+                      foregroundColor:
+                          AppColors.clienteAccent,
+
+                      onPressed:
+                          _miUbicacionGPS == null
+                              ? null
+                              : _elegirMiUbicacion,
+
+                      child:
+                          const Icon(
+                        Icons.my_location,
+                      ),
                     ),
                   ),
+
+                  // =================================================
+                  // PANEL INFERIOR
+                  // =================================================
 
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: 0,
+
                     child: Container(
-                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-                      decoration: const BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(20)),
+                      padding:
+                          const EdgeInsets
+                              .fromLTRB(
+                        18,
+                        16,
+                        18,
+                        24,
                       ),
+
+                      decoration:
+                          const BoxDecoration(
+                        color:
+                            AppColors.surface,
+
+                        borderRadius:
+                            BorderRadius
+                                .vertical(
+                          top: Radius.circular(
+                            20,
+                          ),
+                        ),
+                      ),
+
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize:
+                            MainAxisSize.min,
+
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.place,
-                                  color: AppColors.clienteAccent, size: 20),
-                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.place,
+                                color: AppColors
+                                    .clienteAccent,
+                                size: 20,
+                              ),
+
+                              const SizedBox(
+                                width: 8,
+                              ),
+
                               Expanded(
-                                child: _cargandoDireccion
-                                    ? const Text(
-                                        'Ubicando dirección...',
-                                        style: TextStyle(
-                                            color: AppColors.subtitle),
-                                      )
-                                    : Text(
-                                        _direccionActual,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: AppColors.text,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                                child:
+                                    _cargandoDireccion
+                                        ? const Text(
+                                            'Ubicando dirección...',
+
+                                            style:
+                                                TextStyle(
+                                              color:
+                                                  AppColors
+                                                      .subtitle,
+                                            ),
+                                          )
+                                        : Text(
+                                            _direccionActual,
+
+                                            maxLines: 2,
+
+                                            overflow:
+                                                TextOverflow
+                                                    .ellipsis,
+
+                                            style:
+                                                const TextStyle(
+                                              color:
+                                                  AppColors
+                                                      .text,
+
+                                              fontWeight:
+                                                  FontWeight
+                                                      .w600,
+                                            ),
+                                          ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+
+                          const SizedBox(
+                            height: 16,
+                          ),
+
                           SizedBox(
-                            width: double.infinity,
+                            width:
+                                double.infinity,
+
                             height: 52,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.clienteAccent,
-                                foregroundColor: Colors.white,
+
+                            child:
+                                ElevatedButton(
+                              style:
+                                  ElevatedButton
+                                      .styleFrom(
+                                backgroundColor:
+                                    AppColors
+                                        .clienteAccent,
+
+                                foregroundColor:
+                                    Colors.white,
                               ),
+
                               onPressed:
-                                  _cargandoDireccion ? null : _confirmar,
-                              child: const Text('Confirmar ubicación'),
+                                  _cargandoDireccion
+                                      ? null
+                                      : _confirmar,
+
+                              child:
+                                  const Text(
+                                'Confirmar ubicación',
+                              ),
                             ),
                           ),
                         ],
