@@ -18,18 +18,16 @@ class DashboardHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "👋 Bienvenido a Tecnosecurity",
+            'Panel de administrador',
             style: TextStyle(
               color: AppColors.text,
               fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
           ),
-
           SizedBox(height: 10),
-
           Text(
-            "🚧 En construcción",
+            'Consulta usuarios, técnicos, servicios y reportes.',
             style: TextStyle(
               color: AppColors.accent,
               fontSize: 16,

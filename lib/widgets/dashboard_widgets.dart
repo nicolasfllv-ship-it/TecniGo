@@ -6,6 +6,7 @@ class DashboardCard extends StatelessWidget {
   final String valor;
   final IconData icono;
   final Color color;
+  final VoidCallback? onTap;
 
   const DashboardCard({
     super.key,
@@ -13,6 +14,7 @@ class DashboardCard extends StatelessWidget {
     required this.valor,
     required this.icono,
     required this.color,
+    this.onTap,
   });
 
   @override
@@ -20,48 +22,38 @@ class DashboardCard extends StatelessWidget {
     return Card(
       elevation: 8,
       shadowColor: color.withOpacity(0.25),
-      shape: RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: color.withOpacity(0.15),
-              child: Icon(
-                icono,
-                color: color,
-                size: 28,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: color.withOpacity(0.15),
+                child: Icon(icono, color: color, size: 28),
               ),
-            ),
-
-            const SizedBox(height: 14),
-
-            Text(
-              valor,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: AppColors.text,
+              const SizedBox(height: 14),
+              Text(
+                valor,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.text,
+                ),
               ),
-            ),
-
-            const SizedBox(height: 6),
-
-            Text(
-              titulo,
-              style: const TextStyle(
-                fontSize: 16,
-                color: AppColors.subtitle,
+              const SizedBox(height: 6),
+              Text(
+                titulo,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: AppColors.subtitle),
               ),
-            ),
-
-          ],
+            ],
+          ),
         ),
       ),
     );
