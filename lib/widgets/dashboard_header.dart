@@ -18,7 +18,7 @@ class DashboardHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "👋 Bienvenido a TecniGo",
+            "👋 Bienvenido a Tecnosecurity",
             style: TextStyle(
               color: AppColors.text,
               fontSize: 28,

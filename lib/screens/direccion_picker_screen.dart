@@ -399,7 +399,7 @@ class _DireccionPickerScreenState extends State<DireccionPickerScreen> {
         uri,
         headers: {
           'User-Agent':
-              'TecniGoApp/1.0 (contacto@tecnigo.app)',
+              'TecnosecurityApp/1.0 (contacto@tecnigo.app)',
           'Accept': 'application/json',
         },
       );
