@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:tecnigo/screens/admin_reportes_screen.dart';
 import 'package:tecnigo/screens/admin_servicios_screen.dart';
 import 'package:tecnigo/screens/admin_tecnicos_screen.dart';
-import 'package:tecnigo/screens/admin_usuarios_screen.dart';
+import 'package:tecnigo/screens/admin_clientes_screen.dart';
 import 'package:tecnigo/theme/app_colors.dart';
 import 'package:tecnigo/widgets/admin_drawer.dart';
 import 'package:tecnigo/widgets/dashboard_header.dart';
@@ -115,7 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       valor: totalClientes.toString(),
                       icono: Icons.people,
                       color: AppColors.primary,
-                      onTap: () => _abrir(context, const AdminUsuariosScreen()),
+                      onTap: () => _abrir(context, const AdminClientesScreen()),
                     ),
                     DashboardCard(
                       titulo: 'Técnicos',
@@ -130,7 +130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.build,
                       color: AppColors.success,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'todos')),
                     ),
                     DashboardCard(
                       titulo: 'Pendientes',
@@ -138,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.schedule_outlined,
                       color: AppColors.accent,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'pendiente')),
                     ),
                     DashboardCard(
                       titulo: 'Aceptados / en camino',
@@ -146,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.directions_car_outlined,
                       color: AppColors.clienteAccent,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'aceptados_en_camino')),
                     ),
                     DashboardCard(
                       titulo: 'Trabajando',
@@ -154,7 +154,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.handyman_outlined,
                       color: AppColors.tecnicoAccent,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'trabajando')),
                     ),
                     DashboardCard(
                       titulo: 'Finalizados',
@@ -162,7 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.check_circle_outline,
                       color: AppColors.success,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'finalizado')),
                     ),
                     DashboardCard(
                       titulo: 'Cancelados',
@@ -170,7 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icono: Icons.cancel_outlined,
                       color: AppColors.error,
                       onTap: () =>
-                          _abrir(context, const AdminServiciosScreen()),
+                          _abrir(context, const AdminServiciosScreen(filtroInicial: 'cancelado')),
                     ),
                     DashboardCard(
                       titulo: 'Reportados',
