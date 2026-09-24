@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && isValidUserCreate(request.resource.data);
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && isValidUserUpdate(request.resource.data, resource.data);
+      allow delete: if false;
+
+      function isValidUserCreate(data) {
+        return data.keys().hasOnly([
+            'uid',
+            'nombre',
+            'email',
+            'rol',
+            'fechaRegistro',
+            'fotoBase64',
+          ])
+          && data['uid'] == request.auth.uid
+          && (data['rol'] == 'cliente' || data['rol'] == 'tecnico')
+          && data['nombre'] is string
+          && data['nombre'].size() > 0
+          && data['email'] is string
+          && data['email'] == request.auth.token.email
+          && data['fechaRegistro'] is timestamp;
+      }
+
+      function isValidUserUpdate(newData, oldData) {
+        return isClienteUpdate(newData, oldData)
+            || isTecnicoUpdate(newData, oldData);
+      }
+
+      function isClienteUpdate(newData, oldData) {
+        return oldData['rol'] == 'cliente'
+            && newData.diff(oldData).affectedKeys().hasOnly([
+                'nombre',
+                'fotoBase64',
+              ])
+            && (!newData.diff(oldData).affectedKeys().hasAny(['nombre']) || newData['nombre'] is string)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['fotoBase64']) || newData['fotoBase64'] is string)
+            && newData['uid'] == oldData['uid']
+            && newData['email'] == oldData['email']
+            && newData['rol'] == oldData['rol']
+            && newData['fechaRegistro'] == oldData['fechaRegistro'];
+      }
+
+      function isTecnicoUpdate(newData, oldData) {
+        return oldData['rol'] == 'tecnico'
+            && newData.diff(oldData).affectedKeys().hasOnly([
+                'nombre',
+                'fotoBase64',
+                'disponible',
+                'lat',
+                'lng',
+                'ubicacionActualizada',
+              ])
+            && (!newData.diff(oldData).affectedKeys().hasAny(['nombre']) || newData['nombre'] is string)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['fotoBase64']) || newData['fotoBase64'] is string)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['disponible']) || newData['disponible'] is bool)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['lat']) || newData['lat'] is number)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['lng']) || newData['lng'] is number)
+            && (!newData.diff(oldData).affectedKeys().hasAny(['ubicacionActualizada']) || newData['ubicacionActualizada'] is timestamp)
+            && newData['uid'] == oldData['uid']
+            && newData['email'] == oldData['email']
+            && newData['rol'] == oldData['rol']
+            && newData['fechaRegistro'] == oldData['fechaRegistro'];
+      }
+    }
+
+    match /servicios/{servicioId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+
+      match /mensajes/{mensajeId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null &&
+                        request.resource.data.emisorId == request.auth.uid;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    match /calificaciones/{calificacionId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
