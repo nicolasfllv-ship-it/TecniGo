@@ -1,70 +1,70 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tecnigo/services/current_user_service.dart';
 import 'package:tecnigo/theme/app_colors.dart';
 
-class ClienteHeader extends StatelessWidget {
+class ClienteHeader extends StatefulWidget {
   const ClienteHeader({super.key});
+
+  @override
+  State<ClienteHeader> createState() => _ClienteHeaderState();
+}
+
+class _ClienteHeaderState extends State<ClienteHeader> {
+  final CurrentUserService _usuario = CurrentUserService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarUsuario();
+  }
+
+  Future<void> _cargarUsuario() async {
+    await _usuario.cargar();
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   String obtenerSaludo() {
     final hora = DateTime.now().hour;
 
     if (hora < 12) {
-      return "Buenos días";
+      return 'Buenos días';
     } else if (hora < 18) {
-      return "Buenas tardes";
+      return 'Buenas tardes';
     } else {
-      return "Buenas noches";
+      return 'Buenas noches';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final nombre = (_usuario.nombre ?? '').isNotEmpty
+        ? _usuario.nombre!
+        : 'Usuario';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         Text(
-          "${obtenerSaludo()} 👋",
+          '${obtenerSaludo()} 👋',
           style: const TextStyle(
             fontSize: 18,
             color: AppColors.subtitle,
           ),
         ),
-
         const SizedBox(height: 8),
-
-        FutureBuilder<DocumentSnapshot>(
-          future: user == null
-              ? null
-              : FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .get(),
-          builder: (context, snapshot) {
-            String nombre = "Usuario";
-            if (snapshot.hasData && snapshot.data!.exists) {
-              final data = snapshot.data!.data() as Map<String, dynamic>;
-              if ((data['nombre'] ?? '').toString().isNotEmpty) {
-                nombre = data['nombre'];
-              }
-            }
-            return Text(
-              nombre,
-              style: const TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.bold,
-              ),
-            );
-          },
+        Text(
+          nombre,
+          style: const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-
         const SizedBox(height: 5),
-
         const Text(
-          "¿Qué necesitas hoy?",
+          '¿Qué necesitas hoy?',
           style: TextStyle(
             fontSize: 18,
             color: AppColors.subtitle,

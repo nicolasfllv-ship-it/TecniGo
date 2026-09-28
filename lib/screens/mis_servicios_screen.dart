@@ -17,31 +17,12 @@ class _MisServiciosScreenState extends State<MisServiciosScreen> {
   final Set<String> _cancelando = {};
 
   Future<void> _confirmarCancelar(String servicioId) async {
-    final confirmar = await showDialog<bool>(
+    final motivo = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¿Cancelar este servicio?'),
-        content: const Text(
-          'Esta acción no se puede deshacer. El servicio quedará '
-          'cancelado.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No, mantenerlo'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Sí, cancelar',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
+      builder: (context) => const _CancelacionDialog(),
     );
 
-    if (confirmar != true) return;
+    if (motivo == null || motivo.trim().isEmpty) return;
 
     setState(() => _cancelando.add(servicioId));
 
@@ -49,7 +30,11 @@ class _MisServiciosScreenState extends State<MisServiciosScreen> {
       await FirebaseFirestore.instance
           .collection('servicios')
           .doc(servicioId)
-          .update({'estado': 'cancelado'});
+          .update({
+        'estado': 'cancelado',
+        'motivoCancelacion': motivo.trim(),
+        'fechaCancelacion': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -63,7 +48,9 @@ class _MisServiciosScreenState extends State<MisServiciosScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _cancelando.remove(servicioId));
+      if (mounted) {
+        setState(() => _cancelando.remove(servicioId));
+      }
     }
   }
 
@@ -158,6 +145,7 @@ class _MisServiciosScreenState extends State<MisServiciosScreen> {
                       Text(
                         "Técnico: ${servicio['tecnicoEmail']}",
                       ),
+
                     if (servicio.data().toString().contains('fechaAceptacion'))
                       Text(
                         "Fecha de aceptación: ${(servicio['fechaAceptacion'] as Timestamp).toDate()}",
@@ -267,6 +255,77 @@ class _MisServiciosScreenState extends State<MisServiciosScreen> {
           },
         );
       },
+    );
+  }
+}
+
+class _CancelacionDialog extends StatefulWidget {
+  const _CancelacionDialog();
+
+  @override
+  State<_CancelacionDialog> createState() => _CancelacionDialogState();
+}
+
+class _CancelacionDialogState extends State<_CancelacionDialog> {
+  final TextEditingController motivoController = TextEditingController();
+
+  @override
+  void dispose() {
+    motivoController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('¿Cancelar este servicio?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Esta acción no se puede deshacer. '
+            'Indica el motivo de la cancelación:',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: motivoController,
+            maxLines: 3,
+            maxLength: 200,
+            decoration: const InputDecoration(
+              labelText: 'Motivo de cancelación',
+              hintText: 'Escribe el motivo',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Volver'),
+        ),
+        TextButton(
+          onPressed: () {
+            final motivo = motivoController.text.trim();
+
+            if (motivo.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Debes indicar un motivo'),
+                ),
+              );
+              return;
+            }
+
+            Navigator.pop(context, motivo);
+          },
+          child: const Text(
+            'Confirmar cancelación',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      ],
     );
   }
 }

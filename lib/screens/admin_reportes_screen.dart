@@ -168,6 +168,7 @@ class _ReporteCard extends StatelessWidget {
     final emailCliente = (datos['emailCliente'] ?? '').toString();
     final tecnicoEmail = (datos['tecnicoEmail'] ?? '').toString();
     final estado = (datos['estado'] ?? '').toString();
+    final estadoRevision = (datos['estadoRevision'] ?? '').toString();
 
     final Color estadoColor = _colorEstado(estado);
 
@@ -226,6 +227,28 @@ class _ReporteCard extends StatelessWidget {
                       _estadoLegible(estado),
                       style: TextStyle(
                         color: estadoColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _colorEstadoRevision(estadoRevision).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _colorEstadoRevision(estadoRevision).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Text(
+                      _estadoRevisionLegible(estadoRevision),
+                      style: TextStyle(
+                        color: _colorEstadoRevision(estadoRevision),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -396,5 +419,35 @@ class _ReporteCard extends StatelessWidget {
     String dosDigitos(int numero) => numero.toString().padLeft(2, '0');
     return '${dosDigitos(fecha.day)}/${dosDigitos(fecha.month)}/${fecha.year} '
         '${dosDigitos(fecha.hour)}:${dosDigitos(fecha.minute)}';
+  }
+
+  Color _colorEstadoRevision(String estado) {
+    switch (estado) {
+      case 'pendiente':
+        return AppColors.accent;
+      case 'revisado':
+        return AppColors.clienteAccent;
+      case 'resuelto':
+        return AppColors.success;
+      case 'descartado':
+        return AppColors.error;
+      default:
+        return AppColors.subtitle;
+    }
+  }
+
+  String _estadoRevisionLegible(String estado) {
+    switch (estado) {
+      case 'pendiente':
+        return 'Pendiente';
+      case 'revisado':
+        return 'Revisado';
+      case 'resuelto':
+        return 'Resuelto';
+      case 'descartado':
+        return 'Descartado';
+      default:
+        return estado.isEmpty ? 'Pendiente' : estado;
+    }
   }
 }

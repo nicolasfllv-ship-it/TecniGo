@@ -1,17 +1,17 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:tecnigo/services/current_user_service.dart';
 import 'package:tecnigo/theme/app_colors.dart';
 import 'package:tecnigo/widgets/scanner_frame.dart';
 
 /// Editar nombre y foto de perfil. Sirve tanto para cliente como para
 /// técnico: solo toca los campos 'nombre' y 'fotoBase64' del documento
-/// del usuario en Firestore, así que en cuanto se guarda, se actualiza
-/// solo en cualquier otra pantalla que ya esté leyendo esos datos en
-/// vivo (mi cuenta, servicio en progreso, listas de servicios, etc.).
+/// del usuario en Firestore.
 class EditarPerfilScreen extends StatefulWidget {
   const EditarPerfilScreen({super.key});
 
@@ -21,6 +21,7 @@ class EditarPerfilScreen extends StatefulWidget {
 
 class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   final nombreController = TextEditingController();
+
   Uint8List? fotoBytes;
   bool cargandoDatos = true;
   bool guardando = false;
@@ -39,22 +40,25 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
 
   Future<void> _cargarDatosActuales() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
 
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-
-    if (doc.exists) {
-      final data = doc.data() as Map<String, dynamic>;
-      nombreController.text = (data['nombre'] ?? '').toString();
-      if ((data['fotoBase64'] ?? '').toString().isNotEmpty) {
-        try {
-          fotoBytes = base64Decode(data['fotoBase64']);
-        } catch (_) {}
+    if (user == null) {
+      if (mounted) {
+        setState(() => cargandoDatos = false);
       }
+      return;
     }
 
-    if (mounted) setState(() => cargandoDatos = false);
+    await CurrentUserService.instance.cargar();
+
+    final usuario = CurrentUserService.instance;
+
+    nombreController.text = usuario.nombre ?? '';
+
+    fotoBytes = usuario.obtenerFotoBytes();
+
+    if (mounted) {
+      setState(() => cargandoDatos = false);
+    }
   }
 
   Future<void> _elegirFoto() async {
@@ -62,7 +66,9 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
       ),
       builder: (context) => SafeArea(
         child: Column(
@@ -70,18 +76,32 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined,
-                  color: AppColors.primary),
-              title: const Text('Tomar foto',
-                  style: TextStyle(color: AppColors.text)),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+              leading: const Icon(
+                Icons.photo_camera_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text(
+                'Tomar foto',
+                style: TextStyle(color: AppColors.text),
+              ),
+              onTap: () => Navigator.pop(
+                context,
+                ImageSource.camera,
+              ),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppColors.primary),
-              title: const Text('Elegir de la galería',
-                  style: TextStyle(color: AppColors.text)),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+              leading: const Icon(
+                Icons.photo_library_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text(
+                'Elegir de la galería',
+                style: TextStyle(color: AppColors.text),
+              ),
+              onTap: () => Navigator.pop(
+                context,
+                ImageSource.gallery,
+              ),
             ),
             const SizedBox(height: 8),
           ],
@@ -92,37 +112,52 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
     if (origen == null) return;
 
     final picker = ImagePicker();
+
     final XFile? archivo = await picker.pickImage(
       source: origen,
       maxWidth: 300,
       imageQuality: 60,
     );
+
     if (archivo == null) return;
 
     final bytes = await archivo.readAsBytes();
-    setState(() => fotoBytes = bytes);
+
+    if (mounted) {
+      setState(() => fotoBytes = bytes);
+    }
   }
 
   Future<void> _guardar() async {
     if (guardando) return;
 
     final nombre = nombreController.text.trim();
+
     if (nombre.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa tu nombre')),
+        const SnackBar(
+          content: Text('Ingresa tu nombre'),
+        ),
       );
       return;
     }
 
     final user = FirebaseAuth.instance.currentUser;
+
     if (user == null) return;
 
     setState(() => guardando = true);
 
     try {
-      final Map<String, dynamic> datos = {'nombre': nombre};
+      final Map<String, dynamic> datos = {
+        'nombre': nombre,
+      };
+
+      String? nuevaFotoBase64;
+
       if (fotoBytes != null) {
-        datos['fotoBase64'] = base64Encode(fotoBytes!);
+        nuevaFotoBase64 = base64Encode(fotoBytes!);
+        datos['fotoBase64'] = nuevaFotoBase64;
       }
 
       await FirebaseFirestore.instance
@@ -130,20 +165,32 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
           .doc(user.uid)
           .update(datos);
 
+      CurrentUserService.instance.actualizar(
+        nuevoNombre: nombre,
+        nuevaFotoBase64: nuevaFotoBase64,
+      );
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Perfil actualizado')),
+        const SnackBar(
+          content: Text('Perfil actualizado'),
+        ),
       );
+
       Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo guardar: $e')),
+          SnackBar(
+            content: Text('No se pudo guardar: $e'),
+          ),
         );
       }
     } finally {
-      if (mounted) setState(() => guardando = false);
+      if (mounted) {
+        setState(() => guardando = false);
+      }
     }
   }
 
@@ -151,10 +198,15 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Editar perfil')),
+      appBar: AppBar(
+        title: const Text('Editar perfil'),
+      ),
       body: cargandoDatos
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.all(24),
               children: [
@@ -170,33 +222,48 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                         backgroundImage:
                             fotoBytes != null ? MemoryImage(fotoBytes!) : null,
                         child: fotoBytes == null
-                            ? const Icon(Icons.add_a_photo_outlined,
-                                color: AppColors.subtitle, size: 34)
+                            ? const Icon(
+                                Icons.add_a_photo_outlined,
+                                color: AppColors.subtitle,
+                                size: 34,
+                              )
                             : null,
                       ),
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 10),
+
                 Center(
                   child: TextButton(
                     onPressed: _elegirFoto,
                     child: Text(
-                      fotoBytes == null ? 'Agregar foto' : 'Cambiar foto',
-                      style: const TextStyle(color: AppColors.primary),
+                      fotoBytes == null
+                          ? 'Agregar foto'
+                          : 'Cambiar foto',
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 20),
+
                 TextFormField(
                   controller: nombreController,
-                  style: const TextStyle(color: AppColors.text),
+                  style: const TextStyle(
+                    color: AppColors.text,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Nombre completo',
                     border: OutlineInputBorder(),
                   ),
                 ),
+
                 const SizedBox(height: 30),
+
                 SizedBox(
                   width: double.infinity,
                   height: 52,

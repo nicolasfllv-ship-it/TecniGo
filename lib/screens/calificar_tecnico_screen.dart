@@ -107,6 +107,7 @@ class _CalificarTecnicoScreenState extends State<CalificarTecnicoScreen> {
         'reportado': true,
         'motivoReporte': motivoController.text.trim(),
         'fechaReporte': Timestamp.now(),
+        'estadoRevision': 'pendiente',
       });
 
       if (!mounted) return;
